@@ -1,0 +1,14 @@
+#IMPORTANT: no spaces between samples. Coma separated without spaces.
+#ls -m -> will produce spaces. Remove them before running
+
+echo -e //Sequencing data'\n'reads_R1=\"$(ls -m /data/projects/punim0304/Vemeryi/SRA/trimGalore/necklaceInput/*1.fastq.gz)\" '\n'reads_R2=\"$(ls -m /data/projects/punim0304/Vemeryi/SRA/trimGalore/necklaceInput/*2.fastq.gz)\" > Vem_necklace.config 
+echo -e '\n'//The reference genome and its annotation'\n'annotation=\"$(ls /data/projects/punim0304/Vemeryi/genome/*gff)\" >>Vem_necklace.config 
+echo -e genome=\"$(ls /data/projects/punim0304/Vemeryi/genome/*fna)\" >>Vem_necklace.config 
+
+echo -e  '\n'//The genome and annotation of a related species >>Vem_necklace.config 
+echo -e  annotation_related_species="/home/afarre/original_genomes/Drosophila_melanogaster.BDGP6.37.gtf" >>Vem_necklace.config 
+echo -e  genome_related_species="/home/afarre/original_genomes/Drosophila_melanogaster.BDGP6.dna.toplevel.fa" >>Vem_necklace.config 
+
+echo -e  '\n'//The genome and annotation of a related species >>Vem_necklace.config  
+echo -e  annotation_related_species="/home/afarre/original_genomes/Drosophila_melanogaster.BDGP6.37.gtf" >>Vem_necklace.config 
+echo -e  genome_related_species="/home/afarre/original_genomes/Drosophila_melanogaster.BDGP6.dna.toplevel.fa" >>Vem_necklace.config  
