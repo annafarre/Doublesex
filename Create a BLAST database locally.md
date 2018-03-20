@@ -1,11 +1,15 @@
 ### Create a BLAST database locally
 ```
 makeblastdb -dbtype nucl -in ${input_genome}.fasta -input_type fasta -out ${output_database}
+makeblastdb -dbtype nucl -in -input_type fasta -out 
+
 ```
 ### BLAST the gene of interest
 
 ```
 blastn -query $(pwd)/${filename} -db ${database} -out ${outputPath}${filename}_pos -outfmt 6 -evalue 1e-4 -max_target_seqs 1
+blastn -query  -db  -out  -outfmt 6 -evalue 1e-4 -max_target_seqs 1
+
 ```
 
 ### BLASTn tabular output format 6

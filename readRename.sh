@@ -26,6 +26,7 @@ cat <<-EOF > ${filename}_readRename.sh
 #SBATCH --mail-user=afarre@student.unimelb.edu.au
 #SBATCH --mail-type=ALL
 
+mkdir -p necklaceInput/
 
 gunzip -c ${filename} | sed 's/\(^@.\)*\.\(.*\)\.\([1-2]\)/\1_\2\/\3/g' | gzip > necklaceInput/${filename}
 EOF

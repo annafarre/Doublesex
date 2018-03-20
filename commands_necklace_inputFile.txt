@@ -12,3 +12,17 @@ echo -e  genome_related_species="/home/afarre/original_genomes/Drosophila_melano
 echo -e  '\n'//The genome and annotation of a related species >>Vem_necklace.config  
 echo -e  annotation_related_species="/home/afarre/original_genomes/Drosophila_melanogaster.BDGP6.37.gtf" >>Vem_necklace.config 
 echo -e  genome_related_species="/home/afarre/original_genomes/Drosophila_melanogaster.BDGP6.dna.toplevel.fa" >>Vem_necklace.config  
+
+
+fastqPath=/home/afarre/Mpharaonis/SRA/trimmGalore/necklaceInput/
+speciesLong=Mpharaonis
+speciesShort=Mph
+genomePath=/home/afarre/Mpharaonis/genome
+
+echo -e //Sequencing data'\n'reads_R1=\"$(ls -m ${fastqPath}/*1.fq.gz)\" '\n'reads_R2=\"$(ls -m ${fastqPath}/*2.fq.gz)\" > ${speciesShort}_necklace.config 
+echo -e '\n'//The reference genome and its annotation'\n'annotation=\"$(ls ${genomePath}/GCF*gff)\" >>${speciesShort}_necklace.config 
+echo -e genome=\"$(ls ${genomePath}/GCF*fna)\" >>${speciesShort}_necklace.config 
+
+echo -e  '\n'//The genome and annotation of a related species >>${speciesShort}_necklace.config 
+echo -e  annotation_related_species=\"/home/afarre/original_genomes/Drosophila_melanogaster.BDGP6.37.gtf\" >>${speciesShort}_necklace.config 
+echo -e  genome_related_species=\"/home/afarre/original_genomes/Drosophila_melanogaster.BDGP6.dna.toplevel.fa\" >>${speciesShort}_necklace.config 

@@ -38,7 +38,11 @@ while getopts ":o:i:f:r:l:h" optname
   do
     case "$optname" in
       "i")
-		kallisto_index="$(pwd)/$OPTARG"
+		if [[ $OPTARG == /* ]] ; then
+        	kallisto_index="$OPTARG"
+        else 
+       		kallisto_index="$(pwd)/$OPTARG"
+        fi
         ;;
       "o") 
       	mkdir -p $OPTARG
