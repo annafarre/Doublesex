@@ -1,0 +1,10 @@
+cat * > dsx_prots4tree.fasta
+perl ../../scripts/prots_name_change_4tree.pl dsx_prots4tree.fasta dsx_prots4tree_newName.fasta
+perl ../../scripts/prots_change_name_4phyliptree.pl dsx_prots4tree.fasta dsx_prots4tree_phylip.fasta
+
+grep -o ">.*" dsx_prots4tree_phylip.fasta |wc -l
+grep -o ">.*" dsx_prots4tree_phylip.fasta |sort|uniq |wc -l
+
+
+bash ~/scripts/prot_alignment.sh dsx_prots4tree_DM_phylip.fas dsx_prots4tree_DM.aln
+sbatch ~/scripts/raxml_multithread.sh dsx_prots4tree.aln dsx_tree

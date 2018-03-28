@@ -1,4 +1,13 @@
 #!/bin/perl
+# ----------------------------------------------------------------------------
+# [Author] 	Anna Farre Orteu. 2017
+#			afarre@student.unimelb.edu.au
+#          	Change names of protein/DRA/RNA records downloaded from NCBI
+# ----------------------------------------------------------------------------
+
+# Use:
+# perl prots_name_change_4tree.pl filein_longNames.txt filein_tree_shortNames.tree fileout.tree
+#
 
 #use warnings;
 use Cwd;

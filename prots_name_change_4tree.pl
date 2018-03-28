@@ -19,7 +19,7 @@
 
 use warnings;
 use Cwd;
-use strict;
+# use strict;
 
 my $dir = getcwd;
 chdir $dir;
@@ -34,7 +34,7 @@ open(my $fh, '>', $outfile) or die "Could not open file '$outfile' $!";
 while( my $line = <$info>){  
 	chomp $line;
 	if(grep {/mab/i} $line){
-		$line =~ m/>(.*?)\s.*?(doublesex[-?]\sand\smab.3.related|isoform\s\S*?|\S*?\sisoform|\S*?\sdoublesex|doublesex.*\sisoform|factor.*truncated-like|\S*?)\s\[(\w)\w*?\s(\w\w)\w*?\].*/i;
+		$line =~ m/>(.*?)\s.*?(doublesex[-?]\sand\smab.3.related|isoform\s\S*?|\S*?\sisoform|\S*?\sdoublesex|doublesex.*\sisoform|factor.*truncated-like|\S*?)\s\[(\w)\w*?\s(\w\w)\w*?|(\w)\w*?\s(\w\w)\w*?\s\w*?\].*/i;
 		$line = ">$3$4_Dsx-Mab_$2_$1";
 		$line =~ s/\s/_/g;
 		$line =~ s/,/_/g;
@@ -42,7 +42,7 @@ while( my $line = <$info>){
 		print $fh "$line\n";
 		}
 	elsif(grep {/doublesex/i} $line){
-		$line =~ m/>(.*?)\s.*?(isoform\s\S*?|\S*?\sisoform|factor.*truncated-like|\S*?)\s\[(\w)\w*?\s(\w\w)\w*?\].*/i;
+		$line =~ m/>(.*?)\s.*?(isoform\s\S*?|\S*?\sisoform|factor.*truncated-like|\S*?)\s\[(\w)\w*?\s(\w\w)\w*?|(\w)\w*?\s(\w\w)\w*?\s\w*?\].*/i;
 		$line = ">$3$4_Doublesex_$2_$1";
 		$line =~ s/\s/_/g;
 		$line =~ s/,/_/g;
@@ -51,7 +51,7 @@ while( my $line = <$info>){
 		print $fh "$line\n";
 		}
 		
-	elsif($line =~ m/>(.*?)\s.*?(LOC\d*\sisoform\s\S*?|LOC\d*|\S*?\sisoform|factor.*truncated-like)\s\[(\w)\w*?\s(\w\w)\w*?\].*/i){
+	elsif($line =~ m/>(.*?)\s.*?(LOC\d*\sisoform\s\S*?|LOC\d*|\S*?\sisoform|factor.*truncated-like)\s\[(\w)\w*?\s(\w\w)\w*?|(\w)\w*?\s(\w\w)\w*?\s\w*?\].*/i){
 		$line = ">$3$4_$2_$1";
 		$line =~ s/\s/_/g;
 		$line =~ s/,/_/g;
@@ -59,7 +59,7 @@ while( my $line = <$info>){
 		$line =~ s/PREDICTED://g;
 		print $fh "$line\n";
 		}
-	elsif($line =~ m/>(.*?)\s.*?(.*)\s\[(\w)\w*?\s(\w\w)\w*?\].*/i){
+	elsif($line =~ m/>(.*?)\s.*?(.*)\s\[(\w)\w*?\s(\w\w)\w*?|(\w)\w*?\s(\w\w)\w*?\s\w*?\].*/i){
 		$line = ">$3$4_$2_$1";
 		$line =~ s/\s/_/g;
 		$line =~ s/,/_/g;

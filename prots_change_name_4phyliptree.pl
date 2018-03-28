@@ -1,4 +1,20 @@
 #!/bin/perl
+# ----------------------------------------------------------------------------------------------------
+# [Author] 	Anna Farre Orteu. 2017
+#			afarre@student.unimelb.edu.au
+#          	Change names of protein/DRA/RNA records downloaded from NCBI to phylip compatible names
+# ----------------------------------------------------------------------------------------------------
+
+# Use:
+# perl prots_change_name_4phyliptree.pl filein.fasta fileout.fasta
+#
+# Ex: 
+#	filein: 	>XP_014616309.1 PREDICTED: doublesex- and mab-3-related transcription factor A2 [Polistes canadensis]
+#	fileout: 	>014616309
+#
+#	filein:		>XP_014612935.1 PREDICTED: programmed cell death protein 2 [Polistes canadensis]
+#	fileout:	>014612935
+
 
 use warnings;
 use Cwd;
