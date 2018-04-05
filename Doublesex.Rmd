@@ -1,0 +1,132 @@
+---
+title: "Doublesex"
+author: "Anna Orteu"
+date: "05/04/2018"
+output: 
+  html_document:
+    toc: true # show a table of contents
+    toc_float: true # make table of contents float at the side of the page
+    depth: 3  # upto three depths of headings (specified by #, ## and ###)
+    number_sections: false  # set to true if you want to number sections at each table header
+    theme: flatly
+    code_folding: hide # Add some awesome buttons to show/hide the code
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Gene orthology
+
+Load libraries
+```{r message= FALSE, warning=FALSE}
+#source("https://bioconductor.org/biocLite.R")
+
+#install.packages("rtracklayer")
+library(rtracklayer)
+library(dplyr)
+library(data.table)
+```
+
+This script uses 2 types of files: 
+ 
+ 1. **Psl**: output from blat 
+         Blat done with genes assembled with StringTie in a non-model species
+         matched to a model species (e.g. _Drosophila melanogaster_)
+
+* **MSTRG** -> StringTie genes in the non-model
+   
+* **FB** -> FlyBase genes in the model species
+
+ 2. **Gtf**: gtf file from the model species 
+         
+         Contains the gene ids from FlyBase FB
+         also the gene names (e.g. dsx)
+
+**Goal:** 
+
+    MSTRG#(non-model) -> FB#(model) -> gene_name(model)
+
+
+Read in the psl file (output file from blat)
+```{r}
+dataFile = read.table('/Users/afarre/Unimelb/Doublesex/Wauropunctatat/necklace/relST_genomeST.psl', header = FALSE, sep = "\t", skip = 5, stringsAsFactors = F)
+```
+
+Psl file has no header. Create vector of column names
+```{r}
+names_psl <- unlist(strsplit("matches
+misMatches
+repMatches
+nCount
+qNumInsert
+qBaseInsert
+tNumInsert
+tBaseInsert
+strand
+qName
+qSize
+qStart
+qEnd
+tName
+tSize
+tStart
+tEnd
+blockCount
+blockSizes
+qStarts
+tStarts", "\n"))
+```
+
+Change names of the psl object. 
+
+Columns with query (non-model species) and target (model species) gene names:
+```{r cols.print=3, rows.print=3}
+names(dataFile) <- names_psl
+dplyr::select(dataFile[14:18,], qName, tName)
+```
+
+Read in the gtf file 
+```{r rows.print=5}
+dme_gtf <- import("/Users/afarre/Unimelb/Doublesex/Drosophila_melanogaster.BDGP6.37.gtf")
+as.data.frame(dme_gtf)
+```
+
+###FROM THE PSL FILE
+Get all stringtie gene names in a new column
+```{r rows.print=5}
+dataFile$qmstrg <- sub(".*(MSTRG\\.\\d*).*", "\\1", dataFile$qName)
+as.data.frame(unique(dataFile$qmstrg))
+```
+
+Get all FlyBase (FB*) gene ids in a list, each entry corresponds to the FB gene match
+```{r results="hold"}
+listFB <- strsplit(dataFile$tName, ":") 
+names(listFB) <- dataFile$qmstrg
+listFB <- lapply(listFB, function(x){x[grep("^FBgn\\d*", x)]})
+
+head(listFB)
+```
+
+###FROM THE GTF FILE
+For each gene, find the gene name using the FB gene id
+```{r rows.print=5}
+mcols(dme_gtf)$gene_idFB <- sub(".*(FBgn\\d*).*", "\\1", mcols(dme_gtf)$gene_id)
+as.data.frame((mcols(dme_gtf)$gene_idFB))
+```
+
+remove all entries that contain NA in the "gene_id" column
+```{r rows.print=5}
+mcols(dme_gtf) <- as.data.frame(na.omit(as.data.table(mcols(dme_gtf)), cols="gene_idFB"))
+
+as.data.frame(mcols(dme_gtf))
+```
+
+For each StringTie gene in the Query (non-model) species find the match in the Related (model) species
+```{r}
+#matchList <- lapply(listFB, function(listelement){sapply(listelement, function(x){unique(mcols(dme_gtf[mcols(dme_gtf)$gene_idFB==x])$gene_name)})})
+
+#head(matchList)
+```
+
