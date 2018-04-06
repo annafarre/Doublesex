@@ -151,6 +151,19 @@ fit2 <- contrasts.fit(fit, contrast.matrix)
 fit2 <- eBayes(fit2)
 ```
 
+Densities when using lmFit(v, design)
+```{r}
+plotDensities(fit)
+```
+
+Densities when using contrasts
+
+contrasts.fit(fit, contrast.matrix)
+```{r}
+plotDensities(fit2)
+```
+
+
 ```{r}
 as.data.frame(contrast.matrix)
 ```
