@@ -41,8 +41,7 @@ This script uses 2 types of files:
 
  2. **Gtf**: gtf file from the model species 
          
-         Contains the gene ids from FlyBase FB
-         also the gene names (e.g. dsx)
+Contains the gene ids from FlyBase FB also the gene names (e.g. dsx)
 
 **Goal:** 
 
@@ -124,9 +123,9 @@ as.data.frame(mcols(dme_gtf))
 ```
 
 For each StringTie gene in the Query (non-model) species find the match in the Related (model) species
-```{r}
-#matchList <- lapply(listFB, function(listelement){sapply(listelement, function(x){unique(mcols(dme_gtf[mcols(dme_gtf)$gene_idFB==x])$gene_name)})})
+```{r results="hold"}
+matchList <- lapply(listFB, function(listelement){sapply(listelement, function(x){unique(mcols(dme_gtf[mcols(dme_gtf)$gene_idFB==x])$gene_name)})})
 
-#head(matchList)
+head(matchList)
 ```
 

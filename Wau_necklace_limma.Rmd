@@ -1,0 +1,213 @@
+---
+title: "Wau_necklace_limma"
+author: "Anna Orteu"
+date: "06/04/2018"
+output: 
+  html_document:
+    toc: true # show a table of contents
+    toc_float: true # make table of contents float at the side of the page
+    depth: 3  # upto three depths of headings (specified by #, ## and ###)
+    number_sections: false  # set to true if you want to number sections at each table header
+    theme: flatly
+    code_folding: hide # Add some awesome buttons to show/hide the code
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Analysis of necklace output of _Wasmannia auropunctata_ 
+
+Load libraries
+```{r message= FALSE, warning=FALSE}
+#install.packages("ggplot2")
+#install.packages("dplyr")
+#install.packages("tidyr")
+
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("limma")
+#biocLite("edgeR")
+#biocLite("DEXSeq")
+#biocLite("GenomicRanges")
+#biocLite("Rsubread")
+
+library(limma)
+library(edgeR)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(DEXSeq)
+library(GenomicRanges)
+library(rtracklayer)
+library(Rsubread)
+```
+
+#The data
+Read in the data 
+```{r  rows.print=5}
+counts <- read.csv("/Users/afarre/Unimelb/Doublesex/Wauropunctatat/necklace/block.counts", sep = "\t", skip = 1, stringsAsFactors = F)
+names(counts) <- gsub(".*(DRR.*)\\.bam","\\1", names(counts))
+counts
+```
+
+
+Exclude the pooled sample, DRR029092 (because is a mix of individuals). 
+
+Convert the counts data frame into a matrix (i.e exclude first 6 columns: gene, chr, etc.)
+
+And create a shorter version of the matrix counts for testing purposes.
+
+```{r rows.print=5}
+counts <- subset(counts, select=-c(DRR029092))
+
+short_counts <- head(counts)
+short_counts_matrix <- short_counts[1:6,7:length(short_counts)]
+counts_matrix <- counts[,7:length(counts)]
+counts_matrix
+```
+
+##The dge object
+
+Create the dge object with the conts matrix and the gene id information
+
+Counts is a matrix of exon-level counts, and GeneID identities which gene each exon belongs
+
+```{r results="hold"}
+dge <- DGEList(counts=counts_matrix, genes=counts$Geneid)
+dge$genes$GeneID <- counts$Geneid
+dge
+```
+
+#Normalize
+
+Different filtering either by 
+
+* counts>10 
+
+* cpm>=3
+
+```{r}
+#A <- rowSums(dge$counts)
+#dge <- dge[A>10, , keep.lib.sizes=FALSE]
+
+isexpr <- rowSums(cpm(dge) > 1) >=3
+dge <- dge[isexpr,,keep.lib.sizes=FALSE]
+
+dge <- calcNormFactors(dge)
+```
+
+##Create a design matrix
+
+For that we need sample information
+
+Read in the table with all the information of the SRA samples
+
+Exclude the pooled sample, DRR029092
+
+```{r rows.print=5}
+data_info<-read.csv("/Users/afarre/Unimelb/Doublesex/Wauropunctatat/data_info/Wau_DRP002449_SraRunTable.txt", sep = "\t")
+data_info <- data_info[data_info$Run_s!="DRR029092",]
+data_info
+```
+
+Create a design matrix
+
+First asign numbers to each level of each factor 
+
+Then specify the design through model.matrix()
+
+```{r rows.print=10}
+data_info$caste <- "1"
+#data_info[grep("queen", data_info$sample_title_s),]$caste <- "1"
+data_info[grep("worker", data_info$sample_title_s),]$caste <- "2"
+
+data_info$sex <- "1"
+data_info[grep("male", data_info$sample_title_s),]$caste <- "3"
+
+data_info$population <- ""
+data_info[grep("French Guiana", data_info$sample_title_s),]$population <- "1"
+data_info[grep("hawai", data_info$sample_title_s),]$population <- "2"
+row.names(data_info) <- data_info$Run_s
+
+design <- model.matrix(~ 0 + data_info$caste + data_info$population)
+row.names(design) <- data_info$Run_s
+
+#order matrix by row names and change column names to match condition (i.e queen, worker, etc)
+design <- design[order(rownames(design)),]
+colnames(design)<- c("queen", "worker", "male", "hawaii")
+
+as.data.frame(design)
+```
+
+##Voom transformation
+Apply the voom transformation and fit a linear model
+```{r}
+v <- voom(dge, design, plot=TRUE)
+fit <- lmFit(v, design)
+
+contrast.matrix <- makeContrasts(queen-worker, worker-queen, queen-male, male-queen, worker-male, male-worker, levels=design)
+fit2 <- contrasts.fit(fit, contrast.matrix)
+fit2 <- eBayes(fit2)
+```
+
+```{r}
+as.data.frame(contrast.matrix)
+```
+
+##Differentially spliced exons
+
+Now we can test for differential splicing associated with any coeficient in the linear model. 
+
+First run the diffSplice function.
+```{r results="hold"}
+#ex <- diffSplice(fit, geneid="GeneID")
+ex <- diffSplice(fit2, geneid="GeneID")
+```
+
+Will find genes that show evidence of differential splicing associated with the second coefficient in the linear model. 
+
+The output is similar that from the limma topTable function. 
+
+```{r}
+#More detail can be obtained by
+diff <- topSplice(ex, coef=1, test="simes", number=200)
+diff$mstrgid <- sub(".*(MSTRG\\.\\d*).*", "\\1", diff$GeneID)
+dplyr::select(diff, genes, GeneID, mstrgid)
+#sapply(diff$mstrgid, function(x){matchList[[x]]})
+```
+
+```{r}
+#topSplice(ex, coef=1, test="t", number = 200)
+```
+
+##Differential splicing of _doublesex_
+
+Which will show individual exons that are enriched or depleted relative to other exons in the same gene. 
+
+To display the pattern of exons in the top genes.
+
+Plot doublesex (identified by blast beforehand)  "gene13749:MSTRG.15287"
+
+```{r}
+
+
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2,3,4,5,6),ncol=1), heights = rep(c(1,3), 3))
+#layout.show(n = 6)
+plot.new()
+text(0.5,0.5,"Queen-Worker",cex=2,font=2 )
+plotSplice(ex, coef = 1, geneid = "gene13749:MSTRG.15287")
+
+plot.new()
+text(0.5,0.5,"Queen-Male",cex=2,font=2)
+plotSplice(ex, coef = 3, geneid = "gene13749:MSTRG.15287")
+
+plot.new()
+text(0.5,0.5,"Worker-Male",cex=2,font=2)
+plotSplice(ex, coef = 5, geneid = "gene13749:MSTRG.15287")
+
+#dev.off()
+
+```
+
