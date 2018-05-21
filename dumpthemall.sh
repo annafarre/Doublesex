@@ -42,10 +42,10 @@ while getopts ":p:r:h" optname
         ;;
       "r")
         if [ $OPTARG == "p" ] ; then
-        	options="--split-3 --readids --skip-technical --clip --read-filter pass --dumpbase"       
+        	options="--split-3 --readids --skip-technical --clip --read-filter pass --dumpbase --gzip"       
        		echo $options
         elif [ $OPTARG == "s" ] ; then
-        	options="--readids --skip-technical --clip --read-filter pass --dumpbase"          
+        	options="--readids --skip-technical --clip --read-filter pass --dumpbase  --gzip"          
         	echo $options
         else 
         	echo "Invalid argument. Specify p (paired) or s (single) end library"        

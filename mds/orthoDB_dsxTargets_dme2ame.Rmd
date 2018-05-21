@@ -1,0 +1,99 @@
+---
+title: "orthoDB_targetdsx_dme2ame"
+author: "Anna Orteu"
+date: "07/05/2018"
+output: 
+  html_document:
+    toc: true # show a table of contents
+    toc_float: true # make table of contents float at the side of the page
+    depth: 4  # upto 4 depths of headings (specified by #, ##, ### and ####)
+    number_sections: false  # set to true if you want to number sections at each table header
+    theme: flatly
+    code_folding: hide # Add some awesome buttons to show/hide the code
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Load tables
+
+Tables: 
+
+* odb9v1_genes_dme.tab - orthoDB gene info for _Drosophila melanogaster_
+
+* odb9v1_genes_ame.tab - orthoDB gene info for _Apis mellifera_
+
+* Dme_dsx_targets.csv - genes of interest (queries). Targets of _doublesex_
+
+* odb9v1_OG2genes_dme.tab - orthoDB genes to Orthology Group (OG) for _Drosophila melanogaster_
+
+* odb9v1_OG2genes_ame.tab - orthoDB genes to Orthology Group (OG) for _Apis mellifera_
+
+* odb9v1_OGs.tab - Orthology Groups and its levels (phylogenetic levels)
+
+```{r}
+
+genes_dme <- read.csv("/Users/afarre/Unimelb/Doublesex/orthoDB/odb9v1_genes_dme.tab", header = FALSE, sep = "\t")
+names(genes_dme) <- c("odb_gene_id", "org_id", "seq_id", "uniprot_id", "ensembl_id", "ncbi_gid", "desciption")
+
+genes_ame <- read.csv("/Users/afarre/Unimelb/Doublesex/orthoDB/odb9v1_genes_ame.tab", header = FALSE, sep = "\t")
+names(genes_ame) <- c("odb_gene_id", "org_id", "seq_id", "uniprot_id", "ensembl_id", "ncbi_gid", "desciption")
+
+target_genes <- read.csv("/Users/afarre/Unimelb/Doublesex/data/Dme_dsx_targets.csv")
+length(unique(target_genes$Gene_Flybase_ID))
+OG2genes_dme <- read.csv("/Users/afarre/Unimelb/Doublesex/orthoDB/odb9v1_OG2genes_dme.tab", header = FALSE, sep = "\t")
+names(OG2genes_dme) <- c("OG", "odb_gene_id")
+
+OG2genes_ame <- read.csv("/Users/afarre/Unimelb/Doublesex/orthoDB/odb9v1_OG2genes_ame.tab", header = FALSE, sep = "\t")
+names(OG2genes_ame) <- c("OG", "odb_gene_id")
+
+OGs <- read.csv("/Users/afarre/Unimelb/Doublesex/orthoDB/odb9v1_OGs.tab", header = FALSE, sep = "\t")
+names(OGs) <- c("OG", "level" ,"OG_name")
+
+```
+
+The Endopterygota group (includes Diptera and Hymenoptera) has the 33392 level. 
+
+Found by running the code: 
+
+```
+$ grep "Endopterygota" odb9v1_levels.tab 
+33392	Endopterygota	1309727	56089	100
+```
+
+Frist column gives the OG level.
+
+Keep only OGs that are found at that level. 
+
+```{r}
+OGs <- OGs[OGs$level=="33392",]
+```
+
+#Match target genes to OrthoDB groups
+
+```{r pressure, echo=FALSE}
+#First, match targets to Drosophila
+matchedGenes <- genes_dme[genes_dme$ensembl_id %in% target_genes$Gene_Flybase_ID,]
+
+#Get the OGs of the matched genes
+matchedOG <- OG2genes_dme[OG2genes_dme$odb_gene_id %in% matchedGenes$odb_gene_id ,]
+
+#limit the OG list to those found in the level of interest (i.e 33392; Endopterygota)
+matchedOG <- matchedOG[matchedOG$OG %in% OGs$OG,]
+
+#Get Apis mellifera's genes that match the OG
+matchedOG_ame <- OG2genes_ame[OG2genes_ame$OG %in% unique(matchedOG$OG),]
+matchedGenes_ame <- genes_ame[genes_ame$odb_gene_id %in% matchedOG_ame$odb_gene_id,]
+length(unique(matchedGenes_ame$ensembl_id))
+matchedGenes_ame[grep(".*transformer.*", matchedGenes_ame$desciption, ignore.case = TRUE),]
+
+write.table(x = matchedGenes_ame, file = "/Users/afarre/Unimelb/Doublesex/R/orthoDB_dsxTargets_dme2ame.txt", col.names = TRUE, row.names = TRUE)
+```
+
+
+
+
+
+

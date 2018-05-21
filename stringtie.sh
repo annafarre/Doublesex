@@ -21,7 +21,7 @@ cat <<-EOF > ${pathScript}
 #SBATCH --time=09:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=3
 #SBATCH --job-name=StringTie_${filename}
 #SBATCH --mem-per-cpu=4000
 #SBATCH --mail-type=ALL

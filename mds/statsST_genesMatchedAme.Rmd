@@ -1,0 +1,63 @@
+---
+title: "statsST"
+author: "Anna Orteu"
+date: "03/05/2018"
+output: 
+  html_document:
+    toc: true # show a table of contents
+    toc_float: true # make table of contents float at the side of the page
+    depth: 4  # upto 4 depths of headings (specified by #, ##, ### and ####)
+    number_sections: false  # set to true if you want to number sections at each table header
+    theme: flatly
+    code_folding: hide # Add some awesome buttons to show/hide the code
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Prepare workspace
+
+```{r}
+library(ggplot2)
+```
+
+#Read in the data
+
+Read in the csv with all the stats from SuperTranscripts (ST). The csv is made by concatenating all the `*_info.txt` files that ST outputs.
+```{r rows.print=5}
+table <- read.csv("/Users/afarre/Unimelb/Doublesex/data/GenesDEDS.csv", header = T, sep = ",", stringsAsFactors = F)
+table
+table2 <- read.csv("/Users/afarre/Unimelb/Doublesex/data/MatchedDmeAme.csv", header = T, sep = ",", stringsAsFactors = F)
+table2$subset <- as.factor(table2$subset)
+table2$subset <- reorder(table2$subset, new.order = c("unmatched", "matched"))
+```
+
+```{r}
+ggplot(table, aes(SpeciesID, Genes, fill=Subset))+
+  geom_bar(stat = "identity", position = "dodge")+
+  facet_grid(Analysis ~ Contrast, scales = "free")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10))+
+  ylab("Number of genes")+
+  xlab("Species")+
+  scale_fill_hue(l=55)
+  
+
+```
+
+```{r}
+table2$genes
+
+ggplot(table2, aes(speciesID, genes, fill=subset))+
+  geom_bar(stat = "identity", position = "fill", width = 0.8)+
+  facet_grid(. ~ related.sp, scales = "free")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 11))+
+  ylab("Fraction of genes")+
+  xlab("Species")+
+  scale_fill_brewer(palette = "Paired")
+
+manual("legend", values=c("matched"="black", "unmatched"="grey"))
+  
+
+```

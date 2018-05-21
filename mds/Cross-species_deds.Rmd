@@ -1,0 +1,627 @@
+---
+title: "Cross-species_deds"
+author: "Anna Orteu"
+date: "11/05/2018"
+output: 
+  html_document:
+    toc: true # show a table of contents
+    toc_float: true # make table of contents float at the side of the page
+    depth: 4  # upto 4 depths of headings (specified by #, ##, ### and ####)
+    number_sections: false  # set to true if you want to number sections at each table header
+    theme: flatly
+    code_folding: hide # Add some awesome buttons to show/hide the code
+    df_print: paged
+---
+
+Script to find the intersect of DE and DS genes accross multiple Hymenopteran species
+
+#Prepare the workspace
+
+```{r setup, include=FALSE, message= FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(UpSetR)
+library(rtracklayer)
+library(ggplot2)
+library(ggsignif)
+```
+
+#Differential Splicing
+##Read the data
+
+```{r}
+ds_ame2day <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsCaste_2day_ame.txt")
+ds_ame2day$species <- "Apis mellifera"
+ds_ame2day$speciesID <- "ame2day"
+ds_ame2day <- dplyr::select(ds_ame2day, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+ds_ame4day <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsCaste_4day_ame.txt")
+ds_ame4day$species <- "Apis mellifera"
+ds_ame4day$speciesID <- "ame4day"
+ds_ame4day <- dplyr::select(ds_ame4day, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+ds_aec <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsCaste_aec.txt")
+ds_aec$species <- "Acromyrmex echinatior"
+ds_aec$speciesID <- "aec"
+ds_aec <- dplyr::select(ds_aec, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+ds_mph <-read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsCaste_mph.txt")
+ds_mph$species <- "Monomorium pharaonis"
+ds_mph$speciesID <- "mph"
+ds_mph <- dplyr::select(ds_mph, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+ds_ameP <-read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsCaste_prepupa_ame.txt")
+ds_ameP$species <- "Apis mellifera"
+ds_ameP$speciesID <- "ameP"
+ds_ameP <- dplyr::select(ds_ameP, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+ds_wau <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsCaste_wau.txt")
+ds_wau$species <- "Wasmannia auropunctata"
+ds_wau$speciesID <- "wau"
+ds_wau <- dplyr::select(ds_wau, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+
+ds.genes <- rbind(ds_aec, ds_ame2day)
+ds.genes <- rbind(ds.genes, ds_ame4day)
+ds.genes <- rbind(ds.genes, ds_ameP)
+ds.genes <- rbind(ds.genes, ds_mph)
+ds.genes <- rbind(ds.genes, ds_wau)
+
+```
+
+
+Intersection of Differentially spliced genes:
+```{r}
+dsList1 <- list(aec=ds_aec$dbGeneID, ame2day=ds_ame2day$dbGeneID, ame4day=ds_ame4day$dbGeneID, mph=ds_mph$dbGeneID, wau=ds_wau$dbGeneID)
+dsList2 <- list(aec=ds_aec$geneName, ame2day=ds_ame2day$geneName, ame4day=ds_ame4day$geneName, mph=ds_mph$geneName, wau=ds_wau$geneName)
+upset(fromList(dsList1), order.by = "freq", nsets = 6)
+upset(fromList(dsList2), order.by = "freq", nsets = 6)
+
+```
+
+Which genes are differentially spliced in all species? 
+
+```{r rows.print=10}
+ds.genesTable <- ds.genes %>%
+  # dplyr::filter(speciesID!="ameP") %>%
+  group_by(speciesID)%>%
+  dplyr::select(geneName, speciesID, gene)%>%
+  unique()%>%
+  ungroup()
+
+ds.genesTable <- table(ds.genesTable$geneName)
+ds.genesTable <- as.data.frame(ds.genesTable)
+dplyr::filter(ds.genesTable, Freq>=5)
+```
+
+##Genes of interest: sex differentiation cascade
+
+```{r}
+
+in_genes_ds <- ds.genesTable[grep(".*transformer.*", ds.genesTable$Var1, ignore.case = TRUE),]
+in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*vitellogenin.*", ds.genesTable$Var1, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*bric.*", ds.genesTable$Var1, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*juvenile hormone.*", ds.genesTable$Var1, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*insulin.*", ds.genesTable$Var1, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*royal.*", ds.genesTable$Var1, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*forkhead.*O-like.*", ds.genesTable$Var1, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*yellow.*", ds.genesTable$Var1, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*doublesex.*", ds.genesTable$Var1, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*fruitless.*", ds.genesTable$Var1, ignore.case = TRUE),])
+dplyr::select(in_genes_ds, Var1, Freq)%>%
+  arrange(dplyr::desc(Freq))
+ds.genes[grep(".*doublesex.*", ds.genes$geneName, ignore.case = TRUE),]
+```
+
+```{r}
+
+in_genes_ds <- ds.genes[grep(".*transformer.*", ds.genes$geneName, ignore.case = TRUE),]
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*vitellogenin.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*bric.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*juvenile hormone.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*insulin.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*royal.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*forkhead.*O-like.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*yellow.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*doublesex.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*fruitless.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*sex.*lethal.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*complementary.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*daughter.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*groucho.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*sister.*less.*", ds.genes$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*G0282133.*", ds.genes$gene, ignore.case = TRUE),])
+
+dplyr::select(in_genes_ds, geneName, species, speciesID)
+
+```
+
+
+#Differential Expression
+##Read the data
+
+```{r}
+de_ame2day <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/deCaste_2day_ame.txt")
+de_ame2day$species <- "Apis mellifera"
+de_ame2day$speciesID <- "ame2day"
+de_ame2day <- dplyr::select(de_ame2day, ID, logFC, adj.P.Val,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+de_ame4day <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/deCaste_4day_ame.txt")
+de_ame4day$species <- "Apis mellifera"
+de_ame4day$speciesID <- "ame4day"
+de_ame4day <- dplyr::select(de_ame4day, ID, logFC, adj.P.Val,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+de_aec <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/deCaste_aec.txt")
+de_aec$species <- "Acromyrmex echinatior"
+de_aec$speciesID <- "aec"
+de_aec <- dplyr::select(de_aec, ID, logFC, adj.P.Val,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+de_mph <-read.table(file = "/Users/afarre/Unimelb/Doublesex/R/deCaste_mph.txt")
+de_mph$species <- "Monomorium pharaonis"
+de_mph$speciesID <- "mph"
+de_mph <- dplyr::select(de_mph, ID, logFC, adj.P.Val,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+de_ameP <-read.table(file = "/Users/afarre/Unimelb/Doublesex/R/deCaste_prepupa_ame.txt")
+de_ameP$species <- "Apis mellifera"
+de_ameP$speciesID <- "ameP"
+de_ameP <- dplyr::select(de_ameP, ID, logFC, adj.P.Val,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+de_wau <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/deCaste_wau.txt")
+de_wau$species <- "Wasmannia auropunctata"
+de_wau$speciesID <- "wau"
+de_wau <- dplyr::select(de_wau, ID, logFC, adj.P.Val,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+
+de.genes <- rbind(de_aec, de_ame2day)
+de.genes <- rbind(de.genes, de_ame4day)
+de.genes <- rbind(de.genes, de_ameP)
+de.genes <- rbind(de.genes, de_mph)
+de.genes <- rbind(de.genes, de_wau)
+
+```
+
+```{r}
+
+deList <- list(aec=de_aec$geneName, ame2day=de_ame2day$geneName, ame4day=de_ame4day$geneName, mph=de_mph$geneName, wau=de_wau$geneName)
+deList2 <- list(aec=de_aec$geneName, ame2day=de_ame2day$geneName, ame4day=de_ame4day$geneName, mph=de_mph$geneName, wau=de_wau$geneName)
+upset(fromList(deList), order.by = "freq", nsets = 6)
+upset(fromList(deList2), order.by = "freq", nsets = 6)
+
+```
+
+Which genes are differentially expressed in all species? 
+
+```{r rows.print=10}
+de.genesTable <- de.genes %>%
+  # dplyr::filter(speciesID!="ameP") %>%
+  group_by(speciesID)%>%
+  dplyr::select(geneName, speciesID)%>%
+  unique()%>%
+  ungroup()
+
+de.genesTable <- table(de.genesTable$geneName)
+de.genesTable <- as.data.frame(de.genesTable, stringsAsFactors=FALSE)
+dplyr::filter(de.genesTable, Freq>=5)
+```
+
+
+##Gene os interest: sex differentiation cascade
+
+```{r}
+
+in_genes_de <- de.genesTable[grep(".*transformer.*", de.genesTable$Var1, ignore.case = TRUE),]
+in_genes_de <- rbind(in_genes_de, de.genesTable[grep(".*vitellogenin.*", de.genesTable$Var1, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genesTable[grep(".*bric.*", de.genesTable$Var1, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genesTable[grep(".*juvenile hormone.*", de.genesTable$Var1, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genesTable[grep(".*insulin.*", de.genesTable$Var1, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genesTable[grep(".*royal.*", de.genesTable$Var1, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genesTable[grep(".*forkhead.*O-like.*", de.genesTable$Var1, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genesTable[grep(".*yellow.*", de.genesTable$Var1, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genesTable[grep(".*doublesex.*", de.genesTable$Var1, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genesTable[grep(".*fruitless.*", de.genesTable$Var1, ignore.case = TRUE),])
+dplyr::select(in_genes_de, Var1, Freq)%>%
+  arrange(dplyr::desc(Freq))
+
+de.genes[grep("Vg", de.genes$gene, ignore.case = TRUE),]
+```
+
+```{r}
+
+in_genes_de <- de.genes[grep(".*transformer.*", de.genes$geneName, ignore.case = TRUE),]
+in_genes_de <- rbind(in_genes_de, de.genes[grep(".*vitellogenin.*", de.genes$geneName, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genes[grep(".*bric.*", de.genes$geneName, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genes[grep(".*juvenile hormone.*", de.genes$geneName, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genes[grep(".*insulin.*", de.genes$geneName, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genes[grep(".*royal.*", de.genes$geneName, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genes[grep(".*forkhead.*O-like.*", de.genes$geneName, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genes[grep(".*yellow.*", de.genes$geneName, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genes[grep(".*doublesex.*", de.genes$geneName, ignore.case = TRUE),])
+in_genes_de <- rbind(in_genes_de, de.genes[grep(".*fruitless.*", de.genes$geneName, ignore.case = TRUE),])
+
+in_genes_de$group <- ""
+
+in_genes_de[grep(".*transformer.*", in_genes_de$geneName, ignore.case = TRUE),]$group <- "transformer"
+ in_genes_de[grep(".*vitellogenin.*", in_genes_de$geneName, ignore.case = TRUE),]$group <- "vitellogenin"
+ in_genes_de[grep(".*bric.*", in_genes_de$geneName, ignore.case = TRUE),]$group <- "bric-a-brac"
+ in_genes_de[grep(".*juvenile hormone.*", in_genes_de$geneName, ignore.case = TRUE),]$group <- "JH"
+ in_genes_de[grep(".*insulin.*", in_genes_de$geneName, ignore.case = TRUE),]$group <- "Insulin"
+ in_genes_de[grep(".*royal.*", in_genes_de$geneName, ignore.case = TRUE),]$group <- "MRJP"
+ in_genes_de[grep(".*yellow.*", in_genes_de$geneName, ignore.case = TRUE),]$group <- "yellow"
+ in_genes_de[grep(".*doublesex.*", in_genes_de$geneName, ignore.case = TRUE),]$group <- "dsx"
+ in_genes_de[grep(".*fruitless.*", in_genes_de$geneName, ignore.case = TRUE),]$group <- "fruitless"
+
+
+dplyr::select(in_genes_de, gene,geneName, species, speciesID, logFC, ID, group) %>%
+  dplyr::filter(geneName=="vitellogenin") %>%
+  ggplot(aes(speciesID, logFC, fill=gene))+
+  geom_dotplot(binaxis = "y", stackdir = "center", binwidth = 0.8)+
+  # facet_wrap(~group)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 13))+
+  scale_fill_discrete(name="Gene", labels=c("Vitellogenin", "Vitellogenin receptor"))+
+  theme(legend.text = element_text(size=14), legend.title = element_text(size=14))+
+  theme(axis.title = element_text(size = 14))
+
+```
+#Dsx targets
+
+Are the dsx target genes DE?
+
+
+First, match the dsx targets to the *Apis mellifera* gff and get BEEBASE ids.
+
+```{r}
+dsxTargets <- read.table("/Users/afarre/Unimelb/Doublesex/R/orthoDB_dsxTargets_dme2ame.txt")
+
+ame_gtf <- import.gff3("/Users/afarre/Unimelb/Doublesex/Amellifera/GCF_000002195.4_Amel_4.5_genomic.gff")
+ame_gtf$dbGeneIDlist <- paste(ame_gtf$Dbxref, sep=" ", collapse = ",")
+as.data.frame(ame_gtf)
+
+ame_metaData <- as.data.frame(mcols(ame_gtf))
+
+ame_metaData$geneName <- sub("(.*), transcript variant .*", "\\1", ame_metaData$product)
+
+ame_metaDataRNA <- ame_metaData %>%
+  dplyr::filter(grepl("rna*", ID)) %>% #keep only rows that match rna* in the ID column
+  dplyr::select(type, ID, Name, gene, geneName) %>% #keep only certain columns (others have NA and uninteresting stuff)
+  dplyr::group_by(gene, geneName) %>% #group by gene and geneName 
+  dplyr::filter(row_number(ID) == 1) %>% #keep only one entry per gene
+  dplyr::select(gene, geneName) 
+
+ameMatches <- ame_metaData %>%
+  dplyr::filter(grepl("gene*", ID)) %>% #keep only rows that match gene* in the ID column
+  dplyr::select(type, ID, gene, dbGeneIDlist) %>% #keep only certain columns (others have NA and uninteresting stuff)
+  merge(ame_metaDataRNA, by="gene") 
+
+ameMatches$ensembl_id <- sub("BEEBASE:(GB\\d*).*", "\\1", ameMatches$dbGeneIDlist)
+
+dsxTargets <- ameMatches %>%
+  merge(dsxTargets, by="ensembl_id")%>%
+  dplyr::select(ensembl_id, gene, ID, geneName)
+```
+
+
+Make a list of all DE genes per species and calculate: 
+
+* Total number of dsx targets
+* Number of DE dsx targets 
+* Total number of genes in each species genome
+* Number of DE genes per species
+
+Calculate them percentages of genes DE for dsx targets and for all. 
+
+Test if there is significant increase of DE for dsx targets.
+
+```{r}
+
+deList <- list(aec=de_aec$dbGeneID, ame2day=de_ame2day$dbGeneID, ame4day=de_ame4day$dbGeneID, mph=de_mph$dbGeneID, wau=de_wau$dbGeneID, dsxTargets=dsxTargets$ensembl_id)
+deList <- list(aec=de_aec$dbGeneID, mph=de_mph$dbGeneID, wau=de_wau$dbGeneID, dsxTargets=dsxTargets$ensembl_id)
+upset(fromList(deList), order.by = "freq", nsets = 6)
+
+#Number of genes per genome
+wauGenome <- 16433
+mphGenome <- 11847
+ameGenome <- 10604
+aecGenome <- 11619 
+
+#Calculate percentages and test for significance
+sum(de_aec$dbGeneID %in% dsxTargets$ensembl_id)/length(dsxTargets$ensembl_id)
+length(de_aec$dbGeneID)/aecGenome
+
+#Acromyrmex echinatior
+dsx.de.aec <- sum(de_aec$dbGeneID %in% dsxTargets$ensembl_id)
+dsx.total <- length(dsxTargets$ensembl_id)
+genes.de.aec <- length(de_aec$dbGeneID)
+genes.total.aec <- aecGenome
+
+#Apis mellifera 2days old
+dsx.de.ame2day <- sum(de_ame2day$dbGeneID %in% dsxTargets$ensembl_id)
+genes.de.ame2day <- length(de_ame2day$dbGeneID)
+genes.total.ame <- ameGenome
+
+#Apis mellifera 4days old
+dsx.de.ame4day <- sum(de_ame4day$dbGeneID %in% dsxTargets$ensembl_id)
+genes.de.ame4day <- length(de_ame4day$dbGeneID)
+
+#Monomorium pharaonis
+dsx.de.mph <- sum(de_mph$dbGeneID %in% dsxTargets$ensembl_id)
+genes.de.mph <- length(de_mph$dbGeneID)
+genes.total.mph <- mphGenome
+
+#Wasmannia auropunctata
+dsx.de.wau <- sum(de_wau$dbGeneID %in% dsxTargets$ensembl_id)
+genes.de.wau <- length(de_wau$dbGeneID)
+genes.total.wau <- wauGenome
+
+```
+
+Are the dsx target genes DS?
+
+We do the same for DS genes: 
+
+```{r}
+#Calculate percentages and test for significance
+sum(ds_aec$dbGeneID %in% dsxTargets$ensembl_id)/length(dsxTargets$ensembl_id)
+length(ds_aec$dbGeneID)/aecGenome
+
+#Acromyrmex echinatior
+dsx.ds.aec <- sum(ds_aec$dbGeneID %in% dsxTargets$ensembl_id)
+dsx.total <- length(dsxTargets$ensembl_id)
+genes.ds.aec <- length(ds_aec$dbGeneID)
+genes.total.aec <- aecGenome
+
+#Apis mellifera 2days old
+dsx.ds.ame2day <- sum(ds_ame2day$dbGeneID %in% dsxTargets$ensembl_id)
+genes.ds.ame2day <- length(ds_ame2day$dbGeneID)
+genes.total.ame <- ameGenome
+
+#Apis mellifera 4days old
+dsx.ds.ame4day <- sum(ds_ame4day$dbGeneID %in% dsxTargets$ensembl_id)
+genes.ds.ame4day <- length(ds_ame4day$dbGeneID)
+
+#Monomorium pharaonis
+dsx.ds.mph <- sum(ds_mph$dbGeneID %in% dsxTargets$ensembl_id)
+genes.ds.mph <- length(ds_mph$dbGeneID)
+genes.total.mph <- mphGenome
+
+#Wasmannia auropunctata
+dsx.ds.wau <- sum(ds_wau$dbGeneID %in% dsxTargets$ensembl_id)
+genes.ds.wau <- length(ds_wau$dbGeneID)
+genes.total.wau <- wauGenome
+```
+
+Test for significance. 
+
+Use a ChiSquare Test for each of the 2x2 comparisions. 
+
+With Bonferroni Correction P-Value should be < 0.005
+
+
+```{r}
+dsxVStotal <- matrix(c(dsx.de.aec, dsx.total, genes.de.aec, genes.total.aec), nrow = 2)
+aecDEChiSquare <- chisq.test(dsxVStotal)
+
+dsxVStotal <- matrix(c(dsx.de.ame2day, dsx.total, genes.de.ame2day, genes.total.ame), nrow = 2)
+ame2dayDEChiSquare <- chisq.test(dsxVStotal)
+
+dsxVStotal <- matrix(c(dsx.de.ame4day, dsx.total, genes.de.ame4day, genes.total.ame), nrow = 2)
+ame4dayDEChiSquare <- chisq.test(dsxVStotal)
+
+dsxVStotal <- matrix(c(dsx.de.mph, dsx.total, genes.de.mph, genes.total.mph), nrow = 2)
+mphDEChiSquare <- chisq.test(dsxVStotal)
+
+dsxVStotal <- matrix(c(dsx.de.wau, dsx.total, genes.de.wau, genes.total.wau), nrow = 2)
+wauDEChiSquare <- chisq.test(dsxVStotal)
+
+dsxVStotal <- matrix(c(dsx.ds.aec, dsx.total, genes.ds.aec, genes.total.aec), nrow = 2)
+aecDSChiSquare <- chisq.test(dsxVStotal)
+
+dsxVStotal <- matrix(c(dsx.ds.ame2day, dsx.total, genes.ds.ame2day, genes.total.ame), nrow = 2)
+ame2dayDSChiSquare <- chisq.test(dsxVStotal)
+
+dsxVStotal <- matrix(c(dsx.ds.ame4day, dsx.total, genes.ds.ame4day, genes.total.ame), nrow = 2)
+ame4dayDSChiSquare <- chisq.test(dsxVStotal)
+
+dsxVStotal <- matrix(c(dsx.ds.mph, dsx.total, genes.ds.mph, genes.total.mph), nrow = 2)
+mphDSChiSquare <- chisq.test(dsxVStotal)
+
+dsxVStotal <- matrix(c(dsx.ds.wau, dsx.total, genes.ds.wau, genes.total.wau), nrow = 2)
+wauDSChiSquare <- chisq.test(dsxVStotal)
+
+
+percent.aec <- data_frame(species=rep("Acromyrmex echinatior", 4), comparison=c(rep("DE", 2), rep("DS", 2)), 
+              genes=rep(c("All", "dsx targets"), 2), percentage=as.numeric(c(genes.de.aec/genes.total.aec*100, dsx.de.aec/dsx.total*100, 
+                                                                  genes.ds.aec/genes.total.aec*100, dsx.ds.aec/dsx.total*100)))
+
+percent.ame2day <- data_frame(species=rep("Apis mellifera 2-days old", 4), comparison=c(rep("DE", 2), rep("DS", 2)), 
+              genes=rep(c("All", "dsx targets"), 2), percentage=as.numeric(c(genes.de.ame2day/genes.total.ame*100, dsx.de.ame2day/dsx.total*100, 
+                                                                  genes.ds.ame2day/genes.total.ame*100, dsx.ds.ame2day/dsx.total*100)))
+
+percent.ame4day <- data_frame(species=rep("Apis mellifera 4-days old", 4), comparison=c(rep("DE", 2), rep("DS", 2)), 
+              genes=rep(c("All", "dsx targets"), 2), percentage=as.numeric(c(genes.de.ame4day/genes.total.ame*100, dsx.de.ame4day/dsx.total*100, 
+                                                                  genes.ds.ame4day/genes.total.ame*100, dsx.ds.ame4day/dsx.total*100)))
+
+percent.mph <- data_frame(species=rep("Monomorium pharaonis", 4), comparison=c(rep("DE", 2), rep("DS", 2)), 
+              genes=rep(c("All", "dsx targets"), 2), percentage=as.numeric(c(genes.de.mph/genes.total.mph*100, dsx.de.mph/dsx.total*100, 
+                                                                  genes.ds.mph/genes.total.mph*100, dsx.ds.mph/dsx.total*100)))
+
+percent.wau <- data_frame(species=rep("Wasmannia auropunctata", 4), comparison=c(rep("DE", 2), rep("DS", 2)), 
+              genes=rep(c("All", "dsx targets"), 2), percentage=as.numeric(c(genes.de.wau/genes.total.wau*100, dsx.de.wau/dsx.total*100, 
+                                                                  genes.ds.wau/genes.total.wau*100, dsx.ds.wau/dsx.total*100)))
+percentAll <- rbind(percent.aec,percent.ame2day)
+percentAll <- rbind(percentAll, percent.ame4day)
+percentAll <- rbind(percentAll, percent.mph)
+percentAll <- rbind(percentAll, percent.wau)
+
+data.frame(species=c(rep("Acromyrmex echinatior",2),rep("Apis mellifera 2-days old",2),rep("Apis mellifera 4-days old",2),rep("Monomorium pharaonis",2),
+                     rep("Wasmannia auropunctata",2)), 
+          pvalue=c(aecDEChiSquare$p.value, aecDSChiSquare$p.value, ame2dayDEChiSquare$p.value, ame2dayDSChiSquare$p.value, ame4dayDEChiSquare$p.value,
+                   ame4dayDSChiSquare$p.value, mphDEChiSquare$p.value, mphDSChiSquare$p.value, wauDEChiSquare$p.value, wauDSChiSquare$p.value), 
+          comparison=rep(c("DE","DS"), 5), stringsAsFactors = TRUE)
+
+```
+
+plot:
+```{r}
+
+ggplot(percentAll, aes(species, percentage, fill=genes))+
+  geom_bar(stat = "identity", position = "dodge")+
+  facet_grid(comparison ~.)+
+  # theme(axis.text.x = element_text(angle = 0, hjust = 0))+
+  scale_x_discrete(labels=c("Acromyrmex echinatior"="Aec", "Apis mellifera 2-days old"="Ame 2-days", 
+                            "Apis mellifera 4-days old"="Ame 4-days", "Monomorium pharaonis"="Mph", 
+                            "Wasmannia auropunctata"="Wau"))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 13))+
+  theme(legend.text = element_text(size=14), legend.title = element_text(size=14))+
+  scale_fill_hue(l=55)
+
+```
+
+```{r}
+sum(ds_aec$dbGeneID %in% dsxTargets$ensembl_id)/length(dsxTargets$ensembl_id)
+length(ds_aec$dbGeneID)/aecGenome
+
+
+dsxVStotal <- matrix(c(dsx.ds.aec, dsx.total, genes.ds.aec, genes.total.aec), nrow = 2)
+chisq.test(dsxVStotal)
+
+sum(ds_ame2day$dbGeneID %in% dsxTargets$ensembl_id)/length(dsxTargets$ensembl_id)
+length(ds_ame2day$dbGeneID)/ameGenome
+
+
+
+dsxVStotal <- matrix(c(dsx.ds.ame2day, dsx.total, genes.ds.ame2day, genes.total.ame), nrow = 2)
+chisq.test(dsxVStotal)
+
+
+sum(ds_ame4day$dbGeneID %in% dsxTargets$ensembl_id)/length(dsxTargets$ensembl_id)
+length(ds_ame4day$dbGeneID)/ameGenome
+
+
+dsxVStotal <- matrix(c(dsx.ds.ame4day, dsx.total, genes.ds.ame4day, genes.total.ame), nrow = 2)
+chisq.test(dsxVStotal)
+
+sum(ds_mph$dbGeneID %in% dsxTargets$ensembl_id)/length(dsxTargets$ensembl_id)
+length(ds_mph$dbGeneID)/mphGenome
+
+
+dsxVStotal <- matrix(c(dsx.ds.mph, dsx.total, genes.ds.mph, genes.total.mph), nrow = 2)
+chisq.test(dsxVStotal)
+
+sum(ds_wau$dbGeneID %in% dsxTargets$ensembl_id)/length(dsxTargets$ensembl_id)
+length(ds_wau$dbGeneID)/wauGenome
+
+
+dsxVStotal <- matrix(c(dsx.ds.wau, dsx.total, genes.ds.wau, genes.total.wau), nrow = 2)
+chisq.test(dsxVStotal)
+
+```
+
+
+```{r}
+
+dsList <- list(aec=ds_aec$dbGeneID, ame2day=ds_ame2day$dbGeneID, ame4day=ds_ame4day$dbGeneID, mph=ds_mph$dbGeneID, wau=ds_wau$dbGeneID, dsxTargets=dsxTargets$ensembl_id)
+upset(fromList(dsList), order.by = "freq", nsets = 6)
+
+
+```
+
+```{r}
+
+dedsList <- list(de_aec=de_aec$dbGeneID, de_ame2day=de_ame2day$dbGeneID, de_ame4day=de_ame4day$dbGeneID, de_mph=de_mph$dbGeneID, de_wau=de_wau$dbGeneID, ds_aec=ds_aec$dbGeneID, ds_ame2day=ds_ame2day$dbGeneID, ds_ame4day=ds_ame4day$dbGeneID, ds_mph=ds_mph$dbGeneID, ds_wau=ds_wau$dbGeneID, dsxTargets=dsxTargets$ensembl_id)
+upset(fromList(dedsList), order.by = "freq", nsets = 11, nintersects = 50)
+
+
+```
+
+```{r}
+ds.genes[grep("fruitless",ds.genes$geneName),]
+```
+
+##logFC of dsx target genes
+
+```{r}
+dsxTargetsDE <- de.genes[de.genes$dbGeneID %in% dsxTargets$ensembl_id,]
+
+ggplot(dsxTargetsDE, aes(speciesID,logFC, fill=speciesID))+
+  geom_violin(scale = "area")
+
+```
+
+#DS Sex in Apis mellifera, are they also DS caste? 
+
+```{r}
+ds_ame2day_sex <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsSex_2day_ame.txt")
+
+ds.genesTable[ds.genes$ID %in% ds.genes$ID,]
+
+ds.sex.caste <- ds.genesTable[ds.genesTable$Var1 %in% ds_ame2day_sex$geneName,] 
+ds.sex.caste <- ds.genes[ds.genes$gene %in% ds_ame2day_sex$gene,] %>% 
+   dplyr::select(geneName, FDR, P.Value, species, speciesID)
+# %>%
+#   filter(Freq>=4)
+
+# ds.sex.caste <- ds.genes[ds.genes$geneName %in% ds.sex.caste$Var1,] %>%
+#    dplyr::select(geneName, FDR, P.Value, species, speciesID)
+
+ds.sex.casteTable <- ds.sex.caste %>%
+  # dplyr::filter(speciesID!="ameP") %>%
+  # dplyr::filter(speciesID!="ame2day") %>%
+  group_by(speciesID)%>%
+  dplyr::select(geneName, speciesID)%>%
+  unique()%>%
+  ungroup()
+
+ds.genes.spTable <- ds.genes %>%
+  # dplyr::filter(speciesID!="ameP") %>%
+  # dplyr::filter(speciesID!="ame2day") %>%
+  group_by(speciesID)%>%
+  dplyr::select(geneName, speciesID)%>%
+  unique()%>%
+  ungroup()
+
+# ds.sex.casteTable <- table(ds.sex.casteTable$geneName)
+ds.sex.casteTable <- table(ds.sex.casteTable$speciesID)
+ds.sex.casteTable <- as.data.frame(ds.sex.casteTable, stringsAsFactors=FALSE)
+names(ds.sex.casteTable) <- c("species", "sexDS")
+
+ds.genes.spTable <- table(ds.genes.spTable$speciesID)
+ds.genes.spTable <- as.data.frame(ds.genes.spTable, stringsAsFactors=FALSE)
+names(ds.genes.spTable) <- c("species", "total")
+# dplyr::filter(ds.sex.casteTable, Freq>=4)
+
+merge(ds.genes.spTable, ds.sex.casteTable, by="species") %>%
+  transform.data.frame(percentage=sexDS / total *100)
+
+length(unique(ds_ame2day_sex$gene))
+```
+
+
+#DS sex and caste
+
+```{r}
+de_ame2day_sex <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/deSex_2day_ame.txt")
+de_ame2day_sex$species <- "Apis mellifera"
+de_ame2day_sex$speciesID <- "ame2day"
+de_ame2day_sex <- dplyr::select(de_ame2day_sex, ID, logFC, adj.P.Val,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+de_ame4day_sex <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/deSex_4day_ame.txt")
+de_ame4day_sex$species <- "Apis mellifera"
+de_ame4day_sex$speciesID <- "ame4day"
+de_ame4day_sex <- dplyr::select(de_ame4day_sex, ID, logFC, adj.P.Val,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+de_ameP_sex <-read.table(file = "/Users/afarre/Unimelb/Doublesex/R/deSex_prepupa_ame.txt")
+de_ameP_sex$species <- "Apis mellifera"
+de_ameP_sex$speciesID <- "ameP"
+de_ameP_sex <- dplyr::select(de_ameP_sex,ID, logFC, adj.P.Val,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+de_wau_sex <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/deSex_wau.txt")
+de_wau_sex$species <- "Wasmannia auropunctata"
+de_wau_sex$speciesID <- "wau"
+de_wau_sex <- dplyr::select(de_wau_sex, ID, logFC, adj.P.Val,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
+
+
+deList <- list(ame2day.de=de_ame2day$geneName, ame2day.ds=ds_ame2day$geneName)
+upset(fromList(deList), order.by = "freq")
+
+```
+

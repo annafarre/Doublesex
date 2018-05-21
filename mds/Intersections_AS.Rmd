@@ -1,0 +1,330 @@
+---
+title: "Intersections_AS"
+author: "Anna Orteu"
+date: "24/04/2018"
+output: 
+  html_document:
+    toc: true # show a table of contents
+    toc_float: true # make table of contents float at the side of the page
+    depth: 4  # upto 4 depths of headings (specified by #, ##, ### and ####)
+    number_sections: false  # set to true if you want to number sections at each table header
+    theme: flatly
+    code_folding: hide # Add some awesome buttons to show/hide the code
+    df_print: paged
+---
+
+#Prepare workspace
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message= FALSE, warning=FALSE}
+# install.packages("UpSetR")
+library(UpSetR)
+library(reshape2)
+library(ggplot2)
+library(plyr)
+```
+
+# Intersection plots
+
+## Caste all species
+
+Plot intersections of genes that present alternative splicing between castes (Queens and workers) and that have a match in *Drosophila melanogaster* genome between species.
+
+Species used:
+
+Name used|Species|Family|Subfamily
+:--|:--|:--|:--
+Ame|*Apis mellifera*|Apidae|
+Mph|*Monomorium pharaonis*|Formicidae|Myrmicinae
+Wau|*Wasmannia auropunctata*|Formicidae|Myrmicinae
+Aec|*Acromyrmex echinatior*|Formicidae|Myrmicinae
+Vem|*Vollenhovia emeryi*|Formicidae|Myrmicinae
+
+
+```{r}
+#load the data
+Ame_diffMatches.caste <- read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_caste.txt", header = T)
+Ame_diffMatches_2_4days.caste <- read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_2_4_days_caste.txt", header = T)
+Ame_diffMatches_2days.caste <- read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_2days_caste.txt", header = T)
+Ame_diffMatches_4days.caste <- read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_4days_caste.txt", header = T)
+Wau_diffMatches.caste <-  read.table("~/Unimelb/Doublesex/R/Wau_diffMatches_caste.txt", header = T)
+Mph_diffMatches.caste <-  read.table("~/Unimelb/Doublesex/R/Mph_diffMatches_DRP002877_caste.txt", header = T)
+Aec_diffMatches.caste <-  read.table("~/Unimelb/Doublesex/R/Aec_diffMatches_casteGyneWorker.txt", header = T)
+Vem_diffMatches.caste <-  read.table("~/Unimelb/Doublesex/R/Vem_diffMatches_caste.txt", header = T)
+
+Ame_diffMatches.caste.df <- data.frame(species="Ame.prepupa", genes=unlist(Ame_diffMatches.caste))
+Ame_diffMatches_2days.caste.df <- data.frame(species="Ame.2days", genes=unlist(Ame_diffMatches_2days.caste))
+Ame_diffMatches_4days.caste.df <- data.frame(species="Ame.4days", genes=unlist(Ame_diffMatches_4days.caste))
+Wau_diffMatches.caste.df <- data.frame(species="Wau", genes=unlist(Wau_diffMatches.caste))
+Mph_diffMatches.caste.df <- data.frame(species="Mph", genes=unlist(Mph_diffMatches.caste))
+Aec_diffMatches.caste.df <- data.frame(species="Aec", genes=unlist(Aec_diffMatches.caste))
+Vem_diffMatches.caste.df <- data.frame(species="Vem", genes=unlist(Vem_diffMatches.caste))
+
+#create a presence/abscence df
+df.caste <- rbind(unique(Ame_diffMatches.caste.df), unique(Ame_diffMatches_2days.caste.df))
+df.caste <- rbind(df.caste, unique(Ame_diffMatches_4days.caste.df))
+df.caste <- rbind(df.caste, unique(Wau_diffMatches.caste.df))
+df.caste <- rbind(df.caste, unique(Mph_diffMatches.caste.df))
+df.caste <- rbind(df.caste, unique(Aec_diffMatches.caste.df))
+df.caste <- rbind(df.caste, unique(Vem_diffMatches.caste.df))
+
+df.caste <- dcast(df.caste, genes~species, length)
+
+# listInput.caste <- list(Ame.prepupa=Ame_diffMatches.caste$unlist.Ame_diffMatches.caste., 
+#                   Ame.2day=Ame_diffMatches_2days.caste$unlist.Ame_diffMatches.caste.,
+#                   Ame.4day=Ame_diffMatches_4days.caste$unlist.Ame_diffMatches.caste.,
+#                   Wau=Wau_diffMatches.caste$unlist.Wau_diffMatches.caste., 
+#                   Aec=Aec_diffMatches.caste$unlist.Aec_diffMatches.sex., 
+#                   Mph=Mph_diffMatches.caste$unlist.Mph_diffMatches.DRP002877.caste.,
+#                   Vem=Vem_diffMatches.caste$unlist.Vem_diffMatches.caste.)
+
+# upset(fromList(listInput.caste), order.by = "freq", nsets = 7)
+# names(df.caste)[1] <- "Name"
+# matrix.caste <- df.caste
+# rownames(matrix.caste) <- matrix.caste$Name
+# matrix.caste <- matrix.caste[-1]
+
+#plot
+upset(df.caste, order.by = "freq", nsets = 7)
+
+      # queries = list(list(query = intersects, 
+      #                     params = list("Vem"), 
+      #                     color = "orange", active = T)))
+
+
+
+```
+
+Percentage of genes only found in one of the species and none of the others: 
+
+```{r}
+matrix.caste <- df.caste
+rownames(matrix.caste) <- matrix.caste$genes
+matrix.caste <- matrix.caste[-1]
+
+vem.percent <- data.frame(num.genes=c(dim(matrix.caste[matrix.caste$Vem==1&rowSums(matrix.caste)==1,])[1],
+                 dim(matrix.caste[matrix.caste$Vem==1&rowSums(matrix.caste)==2,])[1],
+                 dim(matrix.caste[matrix.caste$Vem==1&rowSums(matrix.caste)==3,])[1],
+                 dim(matrix.caste[matrix.caste$Vem==1&rowSums(matrix.caste)==4,])[1],
+                 dim(matrix.caste[matrix.caste$Vem==1&rowSums(matrix.caste)==5,])[1],
+                 dim(matrix.caste[matrix.caste$Vem==1&rowSums(matrix.caste)==6,])[1],
+                 dim(matrix.caste[matrix.caste$Vem==1&rowSums(matrix.caste)==7,])[1]),
+           species="Vem", species.num=c("1","2","3","4","5","6","7"))
+
+mph.percent <- data.frame(num.genes=c(dim(matrix.caste[matrix.caste$Mph==1&rowSums(matrix.caste)==1,])[1],
+                 dim(matrix.caste[matrix.caste$Mph==1&rowSums(matrix.caste)==2,])[1],
+                 dim(matrix.caste[matrix.caste$Mph==1&rowSums(matrix.caste)==3,])[1],
+                 dim(matrix.caste[matrix.caste$Mph==1&rowSums(matrix.caste)==4,])[1],
+                 dim(matrix.caste[matrix.caste$Mph==1&rowSums(matrix.caste)==5,])[1],
+                 dim(matrix.caste[matrix.caste$Mph==1&rowSums(matrix.caste)==6,])[1],
+                 dim(matrix.caste[matrix.caste$Mph==1&rowSums(matrix.caste)==7,])[1]),
+           species="Mph", species.num=c("1","2","3","4","5","6","7"))
+
+wau.percent <- data.frame(num.genes=c(dim(matrix.caste[matrix.caste$Wau==1&rowSums(matrix.caste)==1,])[1],
+                 dim(matrix.caste[matrix.caste$Wau==1&rowSums(matrix.caste)==2,])[1],
+                 dim(matrix.caste[matrix.caste$Wau==1&rowSums(matrix.caste)==3,])[1],
+                 dim(matrix.caste[matrix.caste$Wau==1&rowSums(matrix.caste)==4,])[1],
+                 dim(matrix.caste[matrix.caste$Wau==1&rowSums(matrix.caste)==5,])[1],
+                 dim(matrix.caste[matrix.caste$Wau==1&rowSums(matrix.caste)==6,])[1],
+                 dim(matrix.caste[matrix.caste$Wau==1&rowSums(matrix.caste)==7,])[1]),
+           species="Wau", species.num=c("1","2","3","4","5","6","7"))
+
+ame.prepupa.percent <- data.frame(num.genes=c(dim(matrix.caste[matrix.caste$Ame.prepupa==1&rowSums(matrix.caste)==1,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.prepupa==1&rowSums(matrix.caste)==2,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.prepupa==1&rowSums(matrix.caste)==3,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.prepupa==1&rowSums(matrix.caste)==4,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.prepupa==1&rowSums(matrix.caste)==5,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.prepupa==1&rowSums(matrix.caste)==6,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.prepupa==1&rowSums(matrix.caste)==7,])[1]),
+           species="Ame.prepupa", species.num=c("1","2","3","4","5","6","7"))
+
+ame2day.percent <- data.frame(num.genes=c(dim(matrix.caste[matrix.caste$Ame.2days==1&rowSums(matrix.caste)==1,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.2days==1&rowSums(matrix.caste)==2,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.2days==1&rowSums(matrix.caste)==3,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.2days==1&rowSums(matrix.caste)==4,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.2days==1&rowSums(matrix.caste)==5,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.2days==1&rowSums(matrix.caste)==6,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.2days==1&rowSums(matrix.caste)==7,])[1]),
+           species="Ame.2days", species.num=c("1","2","3","4","5","6","7"))
+
+ame4day.percent <- data.frame(num.genes=c(dim(matrix.caste[matrix.caste$Ame.4days==1&rowSums(matrix.caste)==1,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.4days==1&rowSums(matrix.caste)==2,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.4days==1&rowSums(matrix.caste)==3,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.4days==1&rowSums(matrix.caste)==4,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.4days==1&rowSums(matrix.caste)==5,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.4days==1&rowSums(matrix.caste)==6,])[1],
+                 dim(matrix.caste[matrix.caste$Ame.4days==1&rowSums(matrix.caste)==7,])[1]),
+           species="Ame.4days", species.num=c("1","2","3","4","5","6","7"))
+
+aec.percent <- data.frame(num.genes=c(dim(matrix.caste[matrix.caste$Aec==1&rowSums(matrix.caste)==1,])[1],
+                 dim(matrix.caste[matrix.caste$Aec==1&rowSums(matrix.caste)==2,])[1],
+                 dim(matrix.caste[matrix.caste$Aec==1&rowSums(matrix.caste)==3,])[1],
+                 dim(matrix.caste[matrix.caste$Aec==1&rowSums(matrix.caste)==4,])[1],
+                 dim(matrix.caste[matrix.caste$Aec==1&rowSums(matrix.caste)==5,])[1],
+                 dim(matrix.caste[matrix.caste$Aec==1&rowSums(matrix.caste)==6,])[1],
+                 dim(matrix.caste[matrix.caste$Aec==1&rowSums(matrix.caste)==7,])[1]),
+           species="Aec", species.num=c("1","2","3","4","5","6","7"))
+
+df.percent <- rbind(vem.percent, wau.percent)
+df.percent <- rbind(df.percent, mph.percent)
+df.percent <- rbind(df.percent, ame.prepupa.percent)
+df.percent <- rbind(df.percent, ame4day.percent)
+df.percent <- rbind(df.percent, ame2day.percent)
+df.percent <- rbind(df.percent, aec.percent)
+
+
+ggplot(df.percent, aes(species, num.genes, fill=species.num))+
+  geom_bar(stat="identity", position = "fill")+
+  ylab("% genes")
+
+ggplot(df.percent, aes(species, num.genes, fill=species.num))+
+  geom_bar(stat="identity")+
+  ylab("Number of genes")
+
+```
+
+
+
+2-day old *Apis mellifera* larvae present only ~300 AS genes between castes. All of them are found in caste comparisons in other species.
+
+Simplify the plot by excluding the 2-day old *Apis mellifera* larvae: 
+
+```{r}
+Ame_diffMatches.caste <- read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_caste.txt", header = T)
+Ame_diffMatches_2_4days.caste <- read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_2_4_days_caste.txt", header = T)
+Ame_diffMatches_2days.caste <- read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_2days_caste.txt", header = T)
+Ame_diffMatches_4days.caste <- read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_4days_caste.txt", header = T)
+Wau_diffMatches.caste <-  read.table("~/Unimelb/Doublesex/R/Wau_diffMatches_caste.txt", header = T)
+Mph_diffMatches.caste <-  read.table("~/Unimelb/Doublesex/R/Mph_diffMatches_DRP002877_caste.txt", header = T)
+Aec_diffMatches.caste <-  read.table("~/Unimelb/Doublesex/R/Aec_diffMatches_casteGyneWorker.txt", header = T)
+Vem_diffMatches.caste <-  read.table("~/Unimelb/Doublesex/R/Vem_diffMatches_caste.txt", header = T)
+
+listInput.caste <- list(Ame.prepupa=Ame_diffMatches.caste$unlist.Ame_diffMatches.caste., 
+                  Ame.4day=Ame_diffMatches_4days.caste$unlist.Ame_diffMatches.caste.,
+                  Wau=Wau_diffMatches.caste$unlist.Wau_diffMatches.caste., 
+                  Aec=Aec_diffMatches.caste$unlist.Aec_diffMatches.sex., 
+                  Mph=Mph_diffMatches.caste$unlist.Mph_diffMatches.DRP002877.caste.,
+                  Vem=Vem_diffMatches.caste$unlist.Vem_diffMatches.caste.)
+
+upset(fromList(listInput.caste), order.by = "freq", nsets = 6)
+```
+
+## Caste *Apis mellifera*
+
+Compare the different stages of *Apis mellifera*. Are AS genes between castes shared between stages?
+
+```{r}
+listInput.ame <- list(Ame.prepupa=Ame_diffMatches.caste$unlist.Ame_diffMatches.caste., 
+                  Ame.2day=Ame_diffMatches_2days.caste$unlist.Ame_diffMatches.caste.,
+                  Ame.4day=Ame_diffMatches_4days.caste$unlist.Ame_diffMatches.caste.)
+
+upset(fromList(listInput.ame), order.by = "freq", empty.intersections = T)
+```
+
+
+## Sex all species 
+
+Plot intersections of genes that present alternative splicing between sexes and that have a match in *Drosophila melanogaster* genome between species.
+
+```{r}
+Ame_diffMatches.sex <- read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_sex.txt", header = T)
+Ame_diffMatches_2_4days.sex <- read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_2_4_days_sex.txt", header = T)
+Ame_diffMatches_2days.sex <-  read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_2days_sex.txt", header = T)
+Ame_diffMatches_4days.sex <-  read.table("~/Unimelb/Doublesex/R/Ame_diffMatches_4days_sex.txt", header = T)
+Wau_diffMatches.sex <-  read.table("~/Unimelb/Doublesex/R/Wau_diffMatches_sex.txt", header = T)
+Vem_diffMatches.sex <-  read.table("~/Unimelb/Doublesex/R/Vem_diffMatches_sex.txt", header = T)
+
+
+
+listInput.sex <- list(Ame.prepupa=Ame_diffMatches.sex$unlist.Ame_diffMatches.sex., 
+                  Ame.2day=Ame_diffMatches_2days.sex$unlist.Ame_diffMatches.sex.,
+                  Ame.4day=Ame_diffMatches_4days.sex$unlist.Ame_diffMatches.sex.,
+                  Wau=Wau_diffMatches.sex$unlist.Wau_diffMatches.sex.,
+                  Vem=Vem_diffMatches.sex$unlist.Vem_diffMatches.sex.)
+
+upset(fromList(listInput.sex), order.by = "freq")
+```
+
+```{r}
+Ame_diffMatches.sex.df <- data.frame(species="Ame.prepupa", genes=unlist(Ame_diffMatches.sex))
+Ame_diffMatches_2days.sex.df <- data.frame(species="Ame.2days", genes=unlist(Ame_diffMatches_2days.sex))
+Ame_diffMatches_4days.sex.df <- data.frame(species="Ame.4days", genes=unlist(Ame_diffMatches_4days.sex))
+Wau_diffMatches.sex.df <- data.frame(species="Wau", genes=unlist(Wau_diffMatches.sex))
+Vem_diffMatches.sex.df <- data.frame(species="Vem", genes=unlist(Vem_diffMatches.sex))
+
+
+df.sex <- rbind(unique(Ame_diffMatches.sex.df), unique(Ame_diffMatches_2days.sex.df))
+df.sex <- rbind(df.sex, unique(Ame_diffMatches_4days.sex.df))
+df.sex <- rbind(df.sex, unique(Wau_diffMatches.sex.df))
+df.sex <- rbind(df.sex, unique(Vem_diffMatches.sex.df))
+
+df.sex <- dcast(df.sex, genes~species, length)
+
+matrix.sex <- df.sex
+rownames(matrix.sex) <- matrix.sex$genes
+matrix.sex <- matrix.sex[-1]
+
+vem.percent.sex <- data.frame(num.genes=c(dim(matrix.sex[matrix.sex$Vem==1&rowSums(matrix.sex)==1,])[1],
+                 dim(matrix.sex[matrix.sex$Vem==1&rowSums(matrix.sex)==2,])[1],
+                 dim(matrix.sex[matrix.sex$Vem==1&rowSums(matrix.sex)==3,])[1],
+                 dim(matrix.sex[matrix.sex$Vem==1&rowSums(matrix.sex)==4,])[1],
+                 dim(matrix.sex[matrix.sex$Vem==1&rowSums(matrix.sex)==5,])[1]),
+           species="Vem", species.num=c("1","2","3","4","5"))
+
+wau.percent.sex <- data.frame(num.genes=c(dim(matrix.sex[matrix.sex$Wau==1&rowSums(matrix.sex)==1,])[1],
+                 dim(matrix.sex[matrix.sex$Wau==1&rowSums(matrix.sex)==2,])[1],
+                 dim(matrix.sex[matrix.sex$Wau==1&rowSums(matrix.sex)==3,])[1],
+                 dim(matrix.sex[matrix.sex$Wau==1&rowSums(matrix.sex)==4,])[1],
+                 dim(matrix.sex[matrix.sex$Wau==1&rowSums(matrix.sex)==5,])[1]),
+           species="Wau", species.num=c("1","2","3","4","5"))
+
+ame.prepupa.percent.sex <- data.frame(num.genes=c(dim(matrix.sex[matrix.sex$Ame.prepupa==1&rowSums(matrix.sex)==1,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.prepupa==1&rowSums(matrix.sex)==2,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.prepupa==1&rowSums(matrix.sex)==3,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.prepupa==1&rowSums(matrix.sex)==4,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.prepupa==1&rowSums(matrix.sex)==5,])[1]),
+           species="Ame.prepupa", species.num=c("1","2","3","4","5"))
+
+ame2day.percent.sex <- data.frame(num.genes=c(dim(matrix.sex[matrix.sex$Ame.2days==1&rowSums(matrix.sex)==1,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.2days==1&rowSums(matrix.sex)==2,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.2days==1&rowSums(matrix.sex)==3,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.2days==1&rowSums(matrix.sex)==4,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.2days==1&rowSums(matrix.sex)==5,])[1]),
+           species="Ame.2days", species.num=c("1","2","3","4","5"))
+
+ame4day.percent.sex <- data.frame(num.genes=c(dim(matrix.sex[matrix.sex$Ame.4days==1&rowSums(matrix.sex)==1,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.4days==1&rowSums(matrix.sex)==2,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.4days==1&rowSums(matrix.sex)==3,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.4days==1&rowSums(matrix.sex)==4,])[1],
+                 dim(matrix.sex[matrix.sex$Ame.4days==1&rowSums(matrix.sex)==5,])[1]),
+           species="Ame.4days", species.num=c("1","2","3","4","5"))
+
+df.percent.sex <- rbind(vem.percent.sex, wau.percent.sex)
+df.percent.sex <- rbind(df.percent.sex, ame.prepupa.percent.sex)
+df.percent.sex <- rbind(df.percent.sex, ame4day.percent.sex)
+df.percent.sex <- rbind(df.percent.sex, ame2day.percent.sex)
+
+ggplot(df.percent.sex, aes(species, num.genes, fill=species.num))+
+  geom_bar(stat="identity", position = "fill")+
+  ylab("% genes")
+
+ggplot(df.percent.sex, aes(species, num.genes, fill=species.num))+
+  geom_bar(stat="identity")+
+  ylab("Number of genes")
+```
+
+
+## Sex *Apis mellifera*
+
+Compare sexes in *Apis mellifera*. Are AS genes between sexes shared between stages?
+
+```{r}
+listInput.ame.sex <- list(Ame.prepupa=Ame_diffMatches.sex$unlist.Ame_diffMatches.sex., 
+                  Ame.2day=Ame_diffMatches_2days.sex$unlist.Ame_diffMatches.sex.,
+                  Ame.4day=Ame_diffMatches_4days.sex$unlist.Ame_diffMatches.sex.)
+
+upset(fromList(listInput.ame.sex), order.by = "freq", empty.intersections = T)
+```

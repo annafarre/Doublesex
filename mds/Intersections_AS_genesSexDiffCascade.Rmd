@@ -1,0 +1,50 @@
+---
+title: "Intersection_AS_sexCascadeGenes"
+author: "Anna Orteu"
+date: "07/05/2018"
+output: 
+  html_document:
+    toc: true # show a table of contents
+    toc_float: true # make table of contents float at the side of the page
+    depth: 4  # upto 4 depths of headings (specified by #, ##, ### and ####)
+    number_sections: false  # set to true if you want to number sections at each table header
+    theme: flatly
+    code_folding: hide # Add some awesome buttons to show/hide the code
+    df_print: paged
+---
+
+```{r setup, include=FALSE, message= FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(UpSetR)
+library(reshape2)
+library(ggplot2)
+library(plyr)
+```
+
+#Load data
+
+Load tables:
+
+```{r cars}
+wau_genes <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Wau_AS_int_genes.txt", sep = " ")
+aec_genes <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Aec_AS_int_genes.txt", sep = " ")
+ameL_genes <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Ame_4days_AS_int_genes.txt", sep = " ")
+ameP_genes <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Ame_prepupa_AS_int_genes.txt", sep = " ")
+mph_genes <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Mph_AS_int_genes.txt", sep = " ")
+vem_genes <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Vem_prepupa_AS_int_genes.txt", sep = " ")
+```
+
+
+```{r pressure, echo=FALSE}
+intersect(wau_genes$product, aec_genes$product)
+intersect(ameL_genes$product, ameP_genes$product)
+intersect(wau_genes$product, aec_genes$product)
+
+genes_AS <- list(wau=wau_genes$product, aec=aec_genes$product, ameL=ameL_genes$product, 
+                 ameP=ameP_genes$product, mph=mph_genes$product, vem=vem_genes$product)
+
+upset(fromList(genes_AS), order.by = "freq", nsets = 6)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -13,11 +13,10 @@ usage="
 ${bold}DESCRIPTION: 
 ${normal}Create scripts that will run TrimGalore!
 Trims adapters, low quality read ends and runs FastQC
-Paired end data ONLY
+Single end data ONLY
 gz compressed data
 extention must be: 
-	*_pass_1.fastq.gz 
-	*_pass_2.fastq.gz
+	*_pass.fastq.gz 
 	
 trimGalore.sh [options] list_SRA.txt
 
@@ -131,6 +130,6 @@ cat <<-EOF > ${pathScript}
 module load Python
 module load fastqc
 
-/home/afarre/TrimGalore-0.4.5/trim_galore --fastqc --gzip --output_dir ${outputPath} ${inputPath}${filename}_pass.fastq.gz
+/home/afarre/.local/TrimGalore-0.4.5/trim_galore --fastqc --gzip --output_dir ${outputPath} ${inputPath}${filename}_pass.fastq.gz
 EOF
 done <"${list}"

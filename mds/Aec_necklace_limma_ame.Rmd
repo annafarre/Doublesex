@@ -1,0 +1,1614 @@
+---
+title: "Aec_necklace_limma_ame"
+author: "Anna Orteu"
+date: "04/05/2018"
+output: 
+  html_document:
+    toc: true # show a table of contents
+    toc_float: true # make table of contents float at the side of the page
+    depth: 4  # upto 4 depths of headings (specified by #, ##, ### and ####)
+    number_sections: false  # set to true if you want to number sections at each table header
+    theme: flatly
+    code_folding: hide # Add some awesome buttons to show/hide the code
+    df_print: paged
+---
+  
+Script to analyse necklace output using limma. 
+Made for non-model insects - find orthology to _Apis mellifera_ genome. 
+
+Input requited: 
+
+* relST_genomeST.psl file from necklace
+
+* _Apis mellifera_ gtf file GCF_000002195.4_Amel_4.5_genomic.gff
+
+* block.counts file from necklace
+
+* X_SraRunTable.txt file with information about the samples 
+
+#Prepare workspace 
+
+Load libraries
+```{r message= FALSE, warning=FALSE}
+#install.packages("ggplot2")
+#install.packages("dplyr")
+#install.packages("tidyr")
+#devtools::install_github("sjmgarnier/viridis")
+#install.packages("VennDiagram")
+#install.packages("rtracklayer")
+
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("limma")
+#biocLite("edgeR")
+#biocLite("DEXSeq")
+#biocLite("GenomicRanges")
+#biocLite("Rsubread")
+
+
+
+library(limma)
+library(edgeR)
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(tidyr)
+library(DEXSeq)
+library(GenomicRanges)
+library(rtracklayer)
+library(Rsubread)
+library(viridis) #colour blind friendly palette for plots
+library(VennDiagram)
+library(rtracklayer)
+library(dplyr)
+library(data.table)
+library(gplots)
+library(UpSetR)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Gene orthology
+##The datafiles: psl and gtf
+
+This section of the script uses 2 types of files: 
+  
+  1. **Psl**: output from blat 
+Blat done with genes assembled with StringTie in a non-model species
+matched to a model species (e.g. _Drosophila melanogaster_)
+
+* **MSTRG** -> StringTie genes in the non-model
+
+* **GB** -> Genes in the model species
+
+2. **Gtf**: gtf file from the model species 
+
+Contains the gene ids GB also the gene names (e.g. dsx)
+
+**Goal:** 
+  
+  MSTRG#(non-model) -> GB#(model) -> gene_name(model)
+
+
+Read in the psl file (output file from blat)
+```{r}
+dataFile = read.table('/Users/afarre/Unimelb/Doublesex/Aechinatior/necklace_ame/relST_genomeST.psl', header = FALSE, sep = "\t", skip = 5, stringsAsFactors = F)
+```
+
+Psl file has no header. Create vector of column names
+```{r}
+names_psl <- unlist(strsplit("matches
+misMatches
+repMatches
+nCount
+qNumInsert
+qBaseInsert
+tNumInsert
+tBaseInsert
+strand
+qName
+qSize
+qStart
+qEnd
+tName
+tSize
+tStart
+tEnd
+blockCount
+blockSizes
+qStarts
+tStarts", "\n"))
+```
+
+Change names of the psl object. 
+
+Columns with query (non-model species) and target (model species) gene names:
+```{r cols.print=3, rows.print=3}
+names(dataFile) <- names_psl
+dplyr::select(dataFile, qName, tName)
+```
+
+Read in the gtf file 
+```{r rows.print=5}
+ame_gtf <- import.gff3("/Users/afarre/Unimelb/Doublesex/Amellifera/GCF_000002195.4_Amel_4.5_genomic.gff")
+ame_gtf$dbGeneIDlist <- paste(ame_gtf$Dbxref, sep=" ", collapse = ",")
+
+as.data.frame(ame_gtf)
+```
+
+##From the genes of the non-model organism to the model's
+
+Using the psl file we get the matches of the StringTie genes to the FlyBase ones
+
+Get all stringtie gene names in a new column
+```{r rows.print=5}
+dataFile$qmstrg <- sub(".*(MSTRG\\.\\d*).*", "\\1", dataFile$qName)
+as.data.frame(unique(dataFile$qmstrg))
+```
+
+Get all gene ids (gene*) in a list, each entry corresponds to the gene match
+```{r results="hold"}
+dataFile$ID <- sub("^(gene\\d*):.*", "\\1", dataFile$tName)
+
+dataFile %>% 
+  dplyr::select(ID, tName, qName, qmstrg)
+```
+
+##From gene IDs to gene names in _Apis mellifera_
+
+Using the gtf file 
+
+For each gene, find the gene name using the FB gene id
+```{r rows.print=5}
+mcols(ame_gtf)$geneName <- sub(".*(gene\\d*).*", "\\1", mcols(ame_gtf)$product)
+```
+
+remove all entries that contain NA in the "gene_id" column
+```{r rows.print=5}
+# mcols(ame_gtf) <- as.data.frame(na.omit(as.data.table(mcols(ame_gtf)), cols="gene_idFB"))
+# 
+# as.data.frame(mcols(ame_gtf))
+```
+
+For each StringTie gene in the Query (non-model) species find the match in the Related (model) species
+```{r results="hold"}
+
+ame_metaData <- as.data.frame(mcols(ame_gtf))
+
+ame_metaData$geneName <- sub("(.*), transcript variant .*", "\\1", ame_metaData$product)
+
+ame_metaDataRNA <- ame_metaData %>%
+  dplyr::filter(grepl("rna*", ID)) %>% #keep only rows that match rna* in the ID column
+  dplyr::select(type, ID, Name, gene, geneName) %>% #keep only certain columns (others have NA and uninteresting stuff)
+  dplyr::group_by(gene, geneName) %>% #group by gene and geneName 
+  dplyr::filter(row_number(ID) == 1) %>% #keep only one entry per gene
+  dplyr::select(gene, geneName) 
+
+ameMatches <- ame_metaData %>%
+  dplyr::filter(grepl("gene*", ID)) %>% #keep only rows that match gene* in the ID column
+  dplyr::select(type, ID, gene, dbGeneIDlist) %>% #keep only certain columns (others have NA and uninteresting stuff)
+  merge(ame_metaDataRNA, by="gene",  all = TRUE)%>%
+  merge(dataFile, by="ID") %>%
+  dplyr::select(ID, qmstrg, type, gene, geneName, dbGeneIDlist) %>%
+  unique()
+
+ameMatches$dbGeneID <- sub("BEEBASE:(GB\\d*).*", "\\1", ameMatches$dbGeneIDlist)
+```
+
+
+
+
+#Analysis of necklace output of _Acromyrmex echinatior_ 
+
+##Pre-processing
+
+###Read in the count data
+Read in the data (count matrix)
+```{r  rows.print=5}
+counts <- read.csv("/Users/afarre/Unimelb/Doublesex/Aechinatior/necklace_ame/block.counts", sep = "\t", skip = 1, stringsAsFactors = F)
+names(counts) <- gsub(".*(SRR.*)\\.bam","\\1", names(counts))
+counts
+```
+
+Convert the counts data frame into a matrix (i.e exclude first 6 columns: gene, chr, etc.)
+
+And create a shorter version of the matrix counts for testing purposes.
+
+```{r rows.print=5}
+short_counts <- head(counts)
+short_counts_matrix <- short_counts[1:6,7:length(short_counts)]
+counts_matrix <- counts[,7:length(counts)]
+counts_matrix
+dim(counts_matrix)
+```
+
+###Create the dge object
+
+Create the dge object with the conts matrix and the gene id information
+
+Counts is a matrix of exon-level counts, and GeneID identities which gene each exon belongs
+
+```{r results="hold"}
+dge <- DGEList(counts=counts_matrix, genes=counts$Geneid)
+dge$genes$GeneID <- counts$Geneid
+dge$samples
+```
+
+###Create the design matrix
+
+For that we need sample information
+
+Read in the table with all the information of the SRA samples and create a "caste" column.
+
+Create a design matrix
+
+First asign numbers to each level of each factor 
+
+Then specify the design through model.matrix()
+
+```{r rows.print=15}
+data_info<-read.table("/Users/afarre/Unimelb/Doublesex/Aechinatior/Aec_SRP031846_SraRunTable.txt", stringsAsFactors = F, header = TRUE, sep="\t")
+data_info$casteName <- data_info$caste 
+data_info$caste 
+data_info[grep("gyne", data_info$caste),]$caste <- "1"
+data_info[grep("large worker", data_info$caste),]$caste <- "2"
+data_info[grep("small worker", data_info$caste),]$caste <- "3"
+
+data_info <- data_info[data_info$Run!="SRR1015525",]
+row.names(data_info) <- data_info$Run
+data_info$caste <- as.factor(data_info$caste)
+data_info$colony_id <- as.factor(data_info$colony_id)
+
+design <- model.matrix(~ 0 + data_info$caste + data_info$colony_id)
+row.names(design) <- data_info$Run
+
+#order matrix by row names and change column names to match condition (i.e queen, worker, etc)
+design <- design[order(rownames(design)),]
+colnames(design)<- c("gyne", "large_worker", "small_worker", "colAe356", "colAe363" )
+
+as.data.frame(design)
+
+```
+
+
+Include caste and population info into the DGE object.
+
+```{r rows.print=10}
+dge$samples$caste <- ""
+dge$samples[as.data.frame(design)$gyne==1,]$caste <- "1"
+dge$samples[as.data.frame(design)$large_worker==1,]$caste <- "2"
+dge$samples[as.data.frame(design)$small_worker==1,]$caste <- "3"
+
+dge$samples
+```
+
+
+###Calculate normalized library sizes, generate basic descriptive plots
+
+```{r}
+dge <- calcNormFactors(dge)
+```
+
+Some barplots about mapping stats.
+
+"Raw" library sizes:
+
+```{r}
+lib.size <- data.frame(lib.size=sort(colSums(dge$counts)), sample=names(sort(colSums(dge$counts))), stringsAsFactors = F)
+
+lib.size$caste <- data_info[lib.size$sample,]$caste
+
+lib.size$caste <- gsub(pattern = "1", replacement = "gyne", x = lib.size$caste)
+lib.size$caste <- gsub(pattern = "2", replacement = "large_worker", x = lib.size$caste)
+lib.size$caste <- gsub(pattern = "3", replacement = "small_worker", x = lib.size$caste)
+
+ggplot(lib.size, aes(sample, lib.size, fill=caste))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+```
+
+
+Normalised library sizes
+
+```{r}
+norm.lib.size <- dge$samples
+norm.lib.size$sample <- rownames(norm.lib.size) 
+norm.lib.size$norm.lib.size <- norm.lib.size$lib.size * norm.lib.size$norm.factors
+norm.lib.size <- norm.lib.size[order(norm.lib.size$norm.lib.size),]
+
+norm.lib.size$caste <- gsub(pattern = "1", replacement = "gyne", x = norm.lib.size$caste)
+norm.lib.size$caste <- gsub(pattern = "2", replacement = "large_worker", x = norm.lib.size$caste)
+norm.lib.size$caste <- gsub(pattern = "3", replacement = "small_worker", x = norm.lib.size$caste)
+
+ggplot(norm.lib.size, aes(sample, norm.lib.size, fill=caste))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+```
+
+####Number of expressed genes per sample
+
+Plot the number of genes expressed in each sample
+
+```{r}
+ex_gene_sample <- apply(counts_matrix, 2, function(x){ sum(x!=0) })
+ex_gene_sample <- as.data.frame(ex_gene_sample, stringsAsFactors = F)
+names(ex_gene_sample) <- "Num_expressed_genes"
+ex_gene_sample$sample <- rownames(ex_gene_sample)
+
+ex_gene_sample$caste <- data_info[ex_gene_sample$sample,]$caste
+
+ex_gene_sample$caste <- gsub(pattern = "1", replacement = "gyne", x = ex_gene_sample$caste)
+ex_gene_sample$caste <- gsub(pattern = "2", replacement = "large_worker", x = ex_gene_sample$caste)
+ex_gene_sample$caste <- gsub(pattern = "3", replacement = "small_worker", x = ex_gene_sample$caste)
+
+ggplot(ex_gene_sample, aes(sample, Num_expressed_genes, fill=caste ))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+```
+
+####Number of expressed genes in % samples
+
+For each gene calculate the % of samples in which it is expressed. 
+
+Calculate how many genes are expressed in each % interval of samples.
+
+```{r}
+
+genes_percent_samples <- as.data.frame(apply(counts_matrix, 1, function(x){ sum(x!=0)/dim(counts_matrix)[2]*100 }))
+names(genes_percent_samples) <- "Percent_samples"
+genes_percent_samples$gene <- counts$Geneid
+
+
+ggplot(genes_percent_samples, aes(Percent_samples) )+
+  geom_histogram(stat="bin", binwidth=5, aes(fill=..count..))+
+  scale_fill_viridis() +
+  theme_bw()
+
+```
+
+
+###Calculate cpm, Normalize and filter
+
+Different filtering either by 
+
+* counts>10 
+
+* cpm>1 in n=3
+
+* cpm>1 in n=(n caste)/2
+
+```{r}
+#A <- rowSums(dge$counts)
+#dge <- dge[A>10, , keep.lib.sizes=FALSE]
+
+#isexpr <- rowSums(cpm(dge) > 1) >=3
+#dge <- dge[isexpr,,keep.lib.sizes=FALSE]
+
+#dge <- calcNormFactors(dge)
+```
+
+
+Calculate log2 CPM
+```{r}
+cpmNorm <- cpm(dge, normalized.lib.sizes=TRUE, log=TRUE, prior.count=0.25) 
+plot.new()
+plotDensities(cpmNorm, group = norm.lib.size[colnames(cpmNorm),]$caste) 
+abline(v=0)
+```
+
+Filter:
+  
+if n caste <3 then cpm>1 in n=(n caste)
+
+if n caste >3 then cpm>1 in n=(n caste)/2
+
+```{r}
+cpm.dge <- dge
+cpm.dge$counts <- cpmNorm
+
+#create a normalization factor 
+#if #samples < 3 then norm.factor=1
+#if #samples > 3 then norm.factor=0.5
+
+norm.samples <- data.frame(caste=levels(as.factor(cpm.dge$samples$caste)), stringsAsFactors = F)
+norm.samples$norm <- ""
+isexpr <- unlist(lapply(levels(as.factor(cpm.dge$samples$caste)), function(x){
+  if(sum(cpm.dge$samples$caste==x)<3){
+    1
+  }
+  else{
+    0.5
+  }}))
+norm.samples$norm <- isexpr
+
+#the normalization factor is used in
+# if n caste <3 then cpm>1 in n=(n caste)
+# if n caste >3 then cpm>1 in n=(n caste)/2
+
+#which means that we * by the normalization factor 
+
+#cpm>1
+dge.filt1 <- dge[
+  rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="1",])] >1) >= (sum(cpm.dge$samples$caste=="1")*norm.samples$norm[norm.samples$caste=="1"])|
+    rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="2",])] >1) >= (sum(cpm.dge$samples$caste=="2")*norm.samples$norm[norm.samples$caste=="2"])|
+    rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="3",])] >1) >= (sum(cpm.dge$samples$caste=="3")*norm.samples$norm[norm.samples$caste=="3"])
+  ,,keep.lib.sizes=FALSE]
+
+cat(dim(dge.filt1)[1], "exons kept in",dim(dge.filt1)[2],"samples if the filter is set to cmp>1\n")
+
+#cmp>0
+dge.filt0 <- dge[
+  rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="1",])] >0) >= (sum(cpm.dge$samples$caste=="1")*norm.samples$norm[norm.samples$caste=="1"])|
+    rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="2",])] >0) >= (sum(cpm.dge$samples$caste=="2")*norm.samples$norm[norm.samples$caste=="2"])|
+    rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="3",])] >0) >= (sum(cpm.dge$samples$caste=="3")*norm.samples$norm[norm.samples$caste=="3"])
+  ,,keep.lib.sizes=FALSE]
+
+cat(dim(dge.filt0)[1], "exons kept in",dim(dge.filt0)[2],"samples if the filter is set to cmp>0")
+
+```
+
+Recalculate lib size:
+  
+```{r}
+# dge.filt1 <- calcNormFactors(dge.filt1)
+dge.filt0 <- calcNormFactors(dge.filt0)
+```
+
+##Voom transformation
+Apply the voom transformation and fit a linear model
+```{r}
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"No normalization",cex=2,font=2 )
+v <- voom(dge.filt0, design, plot=TRUE)
+
+fit <- lmFit(v, design)
+
+v$targets$caste <- gsub(pattern = "1", replacement = "gyne", x = v$targets$caste)
+v$targets$caste <- gsub(pattern = "2", replacement = "large_worker", x = v$targets$caste)
+v$targets$caste <- gsub(pattern = "3", replacement = "small_worker", x = v$targets$caste)
+
+contrast.matrix.caste <- makeContrasts(gyne-large_worker, gyne-small_worker, large_worker-small_worker, levels=design)
+contrast.matrix.QW <- makeContrasts(gyne-(large_worker+small_worker)/2, levels=design)
+
+fit.caste <- contrasts.fit(fit, contrast.matrix.caste)
+fit.caste <- eBayes(fit.caste)
+
+fit.QW <- contrasts.fit(fit, contrast.matrix.QW)
+fit.QW <- eBayes(fit.QW)
+
+plot.new()
+text(0.5,0.5,"Cyclicloess normalization",cex=2,font=2 )
+v.loess <- voom(dge.filt0, design, normalize.method="cyclicloess", plot=TRUE)
+
+fit.loess <- lmFit(v.loess, design)
+
+v.loess$targets$caste <- gsub(pattern = "1", replacement = "gyne", x = v.loess$targets$caste)
+v.loess$targets$caste <- gsub(pattern = "2", replacement = "large_worker", x = v.loess$targets$caste)
+v.loess$targets$caste <- gsub(pattern = "3", replacement = "small_worker", x = v.loess$targets$caste)
+
+fit.caste.loess <- contrasts.fit(fit.loess, contrast.matrix.caste)
+fit.caste.loess <- eBayes(fit.caste.loess)
+
+fit.QW.loess <- contrasts.fit(fit.loess, contrast.matrix.QW)
+fit.QW.loess <- eBayes(fit.QW.loess)
+
+plot.new()
+text(0.5,0.5,"Quantile normalization",cex=2,font=2 )
+v.quant <- voom(dge.filt0, design, normalize.method="quantile", plot=TRUE)
+
+fit.quant <- lmFit(v.quant, design)
+
+v.quant$targets$caste <- gsub(pattern = "1", replacement = "gyne", x = v.quant$targets$caste)
+v.quant$targets$caste <- gsub(pattern = "2", replacement = "large_worker", x = v.quant$targets$caste)
+v.quant$targets$caste <- gsub(pattern = "3", replacement = "small_worker", x = v.quant$targets$caste)
+
+fit.caste.quant <- contrasts.fit(fit.quant, contrast.matrix.caste)
+fit.caste.quant <- eBayes(fit.caste.quant)
+
+fit.QW.quant <- contrasts.fit(fit.quant, contrast.matrix.QW)
+fit.QW.quant <- eBayes(fit.QW.quant)
+
+```
+
+Densities when using lmFit(v, design)
+```{r}
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"No normalization",cex=2,font=2 )
+plotDensities(v, group = v$targets$caste)
+
+plot.new()
+text(0.5,0.5,"Cyclicloess normalization",cex=2,font=2 )
+plotDensities(v.loess, group = v$targets$caste)
+
+plot.new()
+text(0.5,0.5,"Quantile normalization",cex=2,font=2 )
+plotDensities(v.quant, group = v$targets$caste)
+
+
+
+```
+
+Densities when using contrasts on caste
+
+contrasts.fit(fit, contrast.matrix.caste)
+```{r}
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by caste",cex=2,font=2 )
+plotDensities(fit.caste)
+
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by caste Cyclicloess norm.",cex=2,font=2 )
+plotDensities(fit.caste.loess)
+
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by caste quantile norm.",cex=2,font=2 )
+plotDensities(fit.caste.quant)
+```
+
+Densities when using contrasts on sex
+
+contrasts.fit(fit, contrast.QW)
+```{r}
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by sex",cex=2,font=2 )
+
+plotDensities(fit.QW)
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by sex Cyclicloess norm.",cex=2,font=2 )
+plotDensities(fit.QW.loess)
+
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by sex quantile norm.",cex=2,font=2 )
+plotDensities(fit.QW.quant)
+```
+
+```{r}
+as.data.frame(contrast.matrix.caste)
+```
+
+
+```{r}
+# par(mar=c(1,1,1,1))
+# layout( matrix(c(1,2), byrow = TRUE), heights = c(1,3))
+
+# plot.new()
+# text(0.5,0.5,"MDS Cyclicloess norm.",cex=2,font=2 )
+# plotMDS(v.loess,pch = v$targets$study, col=as.numeric(as.factor(v$targets$caste)))
+# plotMDS(v.loess,pch = as.numeric(v$targets$age), col=as.numeric(as.factor(v$targets$caste)))
+
+
+plot.new()
+#text(0.5,0.5,"MDS no norm.",cex=2,font=2 )
+plotMDS(v,pch =  16, col=as.numeric(as.factor(v$targets$caste)))
+legend("bottomleft", legend=c(levels(as.factor(v$targets$caste))), text.col =c(1,2,3), pch=c(16))
+
+# plot.new()
+# text(0.5,0.5,"MDS quantile norm.",cex=2,font=2 )
+# plotMDS(v.quant,pch = 16, col=as.numeric(as.factor(v$targets$caste)))
+```
+
+
+#Differential splicing: Analysis of necklace output of _Acromyrmex echinatior_
+
+##Differential splicing: Apis mellifera' annotation
+###Differentially spliced exons by caste
+
+Now we can test for differential splicing associated with any coeficient in the linear model. 
+
+First run the diffSplice function.
+```{r results="hold"}
+#ex <- diffSplice(fit, geneid="GeneID")
+ex.caste <- diffSplice(fit.caste, geneid="GeneID")
+
+ex.caste.loess <- diffSplice(fit.QW, geneid="GeneID")
+
+ex.caste.quant <- diffSplice(fit.caste.quant, geneid="GeneID")
+```
+
+Will find genes that show evidence of differential splicing associated with the first (Queen-Worker) coefficient in the linear model. 
+
+The output is similar that from the limma topTable function. 
+
+```{r rows.print=10}
+#More detail can be obtained by topSplice
+
+#First define the number of differentially expressed exons to show
+numDiff.caste <- 200000
+#then use the function topSplice with the coeficient (comparision) that we're interested in
+diff.caste <- topSplice(ex.caste.loess, coef=1, test="simes", number=numDiff.caste,  FDR = 0.05)
+diff.caste$qmstrg <- sub(".*(MSTRG\\.\\d*).*", "\\1", diff.caste$GeneID)
+# dplyr::select(diff.caste, genes, GeneID, qmstrg)
+
+#Find the names of the genes is Apis mellifera 
+diffMatches.caste <- diff.caste %>%
+  merge(ameMatches, by="qmstrg") 
+
+in_genes_ds <- diffMatches.caste[grep(".*transformer.*", diffMatches.caste$geneName, ignore.case = TRUE),]
+in_genes_ds <- rbind(in_genes_ds, diffMatches.caste[grep(".*vitellogenin.*", diffMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.caste[grep(".*bric.*", diffMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.caste[grep(".*juvenile hormone.*", diffMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.caste[grep(".*insulin.*", diffMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.caste[grep(".*royal.*", diffMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.caste[grep(".*forkhead.*O-like.*", diffMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.caste[grep(".*yellow.*", diffMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.caste[grep(".*doublesex.*", diffMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.caste[grep(".*fruitless.*", diffMatches.caste$geneName, ignore.case = TRUE),])
+dplyr::select(in_genes_ds, geneName, P.Value, FDR, NExons)
+
+percentMatched<-length(intersect(unique(diff.caste$qmstrg), unique(ameMatches$qmstrg)))/length(unique(sort(diff.caste$qmstrg)))*100
+cat("Percent of matched genes in Apis mellifera genome:", percentMatched)
+```
+
+###Differential splicing of _doublesex_ by caste
+
+Which will show individual exons that are enriched or depleted relative to other exons in the same gene. 
+
+To display the pattern of exons in the top genes.
+
+Plot doublesex (identified by blast beforehand)  "gene3554:gene3555:MSTRG.4262" "gene3552:gene3553:MSTRG.4260"
+
+```{r}
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2,3,4,5,6),ncol=1), heights = rep(c(1,3), 3))
+#layout.show(n = 6)
+plot.new()
+text(0.5,0.5,"Gyne-Large_worker",cex=1.5,font=2 )
+plotSplice(ex.caste.loess, coef = 1, geneid = "gene3552:gene3553:MSTRG.4260")
+# 
+# plot.new()
+# text(0.5,0.5,"Gyne-Small_worker",cex=1.5,font=2)
+# plotSplice(ex.caste.loess, coef = 2, geneid = "gene3552:gene3553:MSTRG.4260")
+# 
+# plot.new()
+# text(0.5,0.5,"Large_worker-Small_worker",cex=1.5,font=2)
+# plotSplice(ex.caste.loess, coef = 3, geneid = "gene3552:gene3553:MSTRG.4260")
+
+#dev.off()
+```
+
+P values of the exons per contrast
+
+```{r}
+
+#diff$genes=="gene13749:MSTRG.15287"
+pvalues_dsx <- ex.caste.loess$p.value[ex.caste.loess$gene.firstexon["gene3552:gene3553:MSTRG.4260"]:ex.caste.loess$gene.lastexon["gene3552:gene3553:MSTRG.4260"],]
+#rownames(pvalues_dsx) <- c("exon1","exon2","exon3","exon4","exon5","exon6","exon7")
+pvalues_dsx
+```
+
+
+###Differentially spliced exons by QW
+
+Now we can test for differential splicing associated with any coeficient in the linear model.
+
+First run the diffSplice function.
+```{r results="hold"}
+#ex <- diffSplice(fit, geneid="GeneID")
+ex.QW <- diffSplice(fit.QW.loess, geneid="GeneID")
+```
+
+Will find genes that show evidence of differential splicing associated with the second coefficient in the linear model.
+
+The output is similar that from the limma topTable function.
+
+```{r results="hold"}
+#More detail can be obtained by
+#First define the number of differentially expressed exons to show
+numDiff.QW <- 200000
+#then use the function topSplice with the coeficient (comparision) that we're interested in
+diff.QW <- topSplice(ex.QW, coef=1, test="simes", number=numDiff.QW, FDR = 0.05)
+diff.QW$qmstrg <- sub(".*(MSTRG\\.\\d*).*", "\\1", diff.QW$GeneID)
+dplyr::select(diff.QW, genes, GeneID, qmstrg)
+
+#Find the names of the genes is Drosophila 
+diffMatches.QW <- diff.QW %>%
+  merge(ameMatches, by="qmstrg") 
+
+in_genes_ds <- diffMatches.QW[grep(".*transformer.*", diffMatches.QW$geneName, ignore.case = TRUE),]
+in_genes_ds <- rbind(in_genes_ds, diffMatches.QW[grep(".*vitellogenin.*", diffMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.QW[grep(".*bric.*", diffMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.QW[grep(".*juvenile hormone.*", diffMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.QW[grep(".*insulin.*", diffMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.QW[grep(".*royal.*", diffMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.QW[grep(".*forkhead.*O-like.*", diffMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.QW[grep(".*yellow.*", diffMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.QW[grep(".*doublesex.*", diffMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, diffMatches.QW[grep(".*fruitless.*", diffMatches.QW$geneName, ignore.case = TRUE),])
+dplyr::select(in_genes_ds, geneName, P.Value, FDR, NExons)
+
+percentMatched<-length(intersect(unique(diff.caste$qmstrg), unique(ameMatches$qmstrg)))/length(unique(sort(diff.caste$qmstrg)))*100
+
+write.table(diffMatches.QW,"/Users/afarre/Unimelb/Doublesex/R/dsCaste_aec.txt", col.names = TRUE)
+
+```
+
+```{r}
+fru <- diffMatches.QW[grep(ameMatches[grep(".*fruitless.*", ameMatches$geneName, ignore.case = TRUE),]$qmstrg, diffMatches.QW$qmstrg),]$GeneID[1]
+plotSplice(ex.QW, coef = 1, geneid = fru)
+
+```
+
+###Differential splicing of _doublesex_ by sex
+
+Which will show individual exons that are enriched or depleted relative to other exons in the same gene.
+
+To display the pattern of exons in the top genes.
+
+Plot doublesex (identified by blast beforehand)  "gene3552:gene3553:MSTRG.4260"
+
+```{r}
+
+
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+#layout.show(n = 2)
+plot.new()
+text(0.5,0.5,"Gyne-Worker",cex=2,font=2 )
+plotSplice(ex.QW, coef = 1, geneid = "gene3552:gene3553:MSTRG.4260")
+
+#dev.off()
+
+```
+
+P values of the exons per contrast
+
+```{r}
+diff.QW[diff.QW=="gene4131:MSTRG.4244",]
+#diff$genes=="gene13749:MSTRG.15287"
+pvalues_dsx.QW <- ex.QW$p.value[ex.QW$gene.firstexon["gene3552:gene3553:MSTRG.4260"]:ex.QW$gene.lastexon["gene3552:gene3553:MSTRG.4260"],]
+#names(pvalues_dsx.QW) <- c("exon1","exon2","exon3","exon4","exon5","exon6","exon7")
+pvalues_dsx.QW
+```
+
+##Differential splicing: target species' annotation
+###Gene IDs in the target species
+
+First, load W.auropunctata annotation (gtf) and extract gene information. 
+
+```{r}
+#load Acromyrmex echinatior gff
+aec_gtf <- import.gff3("/Users/afarre/Unimelb/Doublesex/Aechinatior/GCF_000204515.1_Aech_3.9_genomic.gff")
+
+aec_metaData <- as.data.frame(mcols(aec_gtf))
+
+aec_metaData$geneName <- sub("(.*), transcript variant .*", "\\1", aec_metaData$product)
+
+aec_metaDataRNA <- aec_metaData %>%
+  dplyr::filter(grepl("rna*", ID)) %>% #keep only rows that match rna* in the ID column
+  dplyr::select(type, ID, Name, gene, geneName) %>% #keep only certain columns (others have NA and uninteresting stuff)
+  dplyr::group_by(gene, geneName) %>% #group by gene and geneName 
+  dplyr::filter(row_number(ID) == 1) %>% #keep only one entry per gene
+  dplyr::select(gene, geneName) 
+
+aecMatches <- aec_metaData %>%
+  dplyr::filter(grepl("gene*", ID)) %>% #keep only rows that match gene* in the ID column
+  dplyr::select(type, ID, gene) %>% #keep only certain columns (others have NA and uninteresting stuff)
+  merge(aec_metaDataRNA, by="gene",  all = TRUE) %>%
+  filter(type!="pseudogene")
+
+```
+
+###Differentially spliced exons by caste
+Test for differential splicing by caste, FDR<0.05
+
+Match genes to aec annotation.
+
+```{r}
+#First define the number of differentially expressed exons to show
+numDiff.caste <- 200000
+#then use the function topSplice with the coeficient (comparision) that we're interested in
+diff.caste.aec <- topSplice(ex.caste.loess, coef=1, test="simes", number=numDiff.caste,  FDR = 0.05)
+diff.caste.aec$ID <- sub("^(gene\\d*):.*", "\\1", diff.caste.aec$genes)
+
+
+#Find the names of the genes is Apis mellifera 
+diffMatches.caste.aec <- diff.caste.aec %>% 
+  dplyr::select(ID, P.Value, FDR, NExons) %>%
+  merge(aecMatches, by="ID")
+
+
+in_genes_ds_aec <- diffMatches.caste.aec[grep(".*transformer.*", diffMatches.caste.aec$geneName, ignore.case = TRUE),]
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.caste.aec[grep(".*vitellogenin.*", diffMatches.caste.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.caste.aec[grep(".*bric.*", diffMatches.caste.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.caste.aec[grep(".*juvenile hormone.*", diffMatches.caste.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.caste.aec[grep(".*insulin.*", diffMatches.caste.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.caste.aec[grep(".*royal.*", diffMatches.caste.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.caste.aec[grep(".*forkhead.*O-like.*", diffMatches.caste.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.caste.aec[grep(".*yellow.*", diffMatches.caste.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.caste.aec[grep(".*doublesex.*", diffMatches.caste.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.caste.aec[grep(".*fruitless.*", diffMatches.caste.aec$geneName, ignore.case = TRUE),])
+dplyr::select(in_genes_ds_aec, geneName, P.Value, FDR, NExons)
+```
+
+
+###Differentially spliced exons by QW
+Test for differential splicing by QW, FDR<0.05
+
+Match genes to aec annotation.
+
+```{r}
+#First define the number of differentially expressed exons to show
+numDiff.QW <- 200000
+#then use the function topSplice with the coeficient (comparision) that we're interested in
+diff.QW.aec <- topSplice(ex.QW, coef=1, test="simes", number=numDiff.QW, FDR = 0.05)
+diff.QW.aec$ID <- sub("^(gene\\d*):.*", "\\1", diff.QW.aec$genes)
+
+
+#Find the names of the genes is Apis mellifera 
+diffMatches.QW.aec <- diff.QW.aec %>% 
+  dplyr::select(ID, P.Value, FDR, NExons) %>%
+  merge(aecMatches, by="ID")
+
+
+in_genes_ds_aec <- diffMatches.QW.aec[grep(".*transformer.*", diffMatches.QW.aec$geneName, ignore.case = TRUE),]
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.QW.aec[grep(".*vitellogenin.*", diffMatches.QW.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.QW.aec[grep(".*bric.*", diffMatches.QW.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.QW.aec[grep(".*juvenile hormone.*", diffMatches.QW.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.QW.aec[grep(".*insulin.*", diffMatches.QW.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.QW.aec[grep(".*royal.*", diffMatches.QW.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.QW.aec[grep(".*forkhead.*O-like.*", diffMatches.QW.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.QW.aec[grep(".*yellow.*", diffMatches.QW.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.QW.aec[grep(".*doublesex.*", diffMatches.QW.aec$geneName, ignore.case = TRUE),])
+in_genes_ds_aec <- rbind(in_genes_ds_aec, diffMatches.QW.aec[grep(".*abrupt-like.*", diffMatches.QW.aec$geneName, ignore.case = TRUE),])
+dplyr::select(in_genes_ds_aec, geneName, P.Value, FDR, NExons)
+
+# write.table(deMatches.QW,"/Users/afarre/Unimelb/Doublesex/Aechinatior/deCaste_aec.txt", col.names = TRUE)
+
+```
+
+
+
+#Differential expression: Analysis of necklace output of _Acromyrmex echinatior_ 
+
+##Pre-processing
+
+###Read in the count data
+Read in the data (count matrix)
+```{r  rows.print=5}
+counts <- read.csv("/Users/afarre/Unimelb/Doublesex/Aechinatior/necklace_ame/gene.counts", sep = "\t", skip = 1, stringsAsFactors = F)
+names(counts) <- gsub(".*(SRR.*)\\.bam","\\1", names(counts))
+counts
+```
+
+Convert the counts data frame into a matrix (i.e exclude first 6 columns: gene, chr, etc.)
+
+And create a shorter version of the matrix counts for testing purposes.
+
+```{r rows.print=5}
+short_counts <- head(counts)
+short_counts_matrix <- short_counts[1:6,7:length(short_counts)]
+counts_matrix <- counts[,7:length(counts)]
+counts_matrix
+dim(counts_matrix)
+```
+
+###Create the dge object
+
+Create the dge object with the conts matrix and the gene id information
+
+Counts is a matrix of exon-level counts, and GeneID identities which gene each exon belongs
+
+```{r results="hold"}
+dge <- DGEList(counts=counts_matrix, genes=counts$Geneid)
+dge$genes$GeneID <- counts$Geneid
+dge$samples
+```
+
+###Create the design matrix
+
+For that we need sample information
+
+Read in the table with all the information of the SRA samples and create a "caste" column.
+
+Create a design matrix
+
+First asign numbers to each level of each factor 
+
+Then specify the design through model.matrix()
+
+```{r rows.print=15}
+data_info<-read.table("/Users/afarre/Unimelb/Doublesex/Aechinatior/Aec_SRP031846_SraRunTable.txt", stringsAsFactors = F, header = TRUE, sep="\t")
+data_info$casteName <- data_info$caste 
+data_info$caste 
+data_info[grep("gyne", data_info$caste),]$caste <- "1"
+data_info[grep("large worker", data_info$caste),]$caste <- "2"
+data_info[grep("small worker", data_info$caste),]$caste <- "3"
+
+data_info <- data_info[data_info$Run!="SRR1015525",]
+row.names(data_info) <- data_info$Run
+data_info$caste <- as.factor(data_info$caste)
+data_info$colony_id <- as.factor(data_info$colony_id)
+
+design <- model.matrix(~ 0 + data_info$caste + data_info$colony_id)
+row.names(design) <- data_info$Run
+
+#order matrix by row names and change column names to match condition (i.e queen, worker, etc)
+design <- design[order(rownames(design)),]
+colnames(design)<- c("gyne", "large_worker", "small_worker", "colAe356", "colAe363" )
+
+as.data.frame(design)
+
+```
+
+
+Include caste and population info into the DGE object.
+
+```{r rows.print=10}
+dge$samples$caste <- ""
+dge$samples[as.data.frame(design)$gyne==1,]$caste <- "1"
+dge$samples[as.data.frame(design)$large_worker==1,]$caste <- "2"
+dge$samples[as.data.frame(design)$small_worker==1,]$caste <- "3"
+
+dge$samples
+```
+
+
+###Calculate normalized library sizes, generate basic descriptive plots
+
+```{r}
+dge <- calcNormFactors(dge)
+```
+
+Some barplots about mapping stats.
+
+"Raw" library sizes:
+
+```{r}
+lib.size <- data.frame(lib.size=sort(colSums(dge$counts)), sample=names(sort(colSums(dge$counts))), stringsAsFactors = F)
+
+lib.size$caste <- data_info[lib.size$sample,]$caste
+
+lib.size$caste <- gsub(pattern = "1", replacement = "gyne", x = lib.size$caste)
+lib.size$caste <- gsub(pattern = "2", replacement = "large_worker", x = lib.size$caste)
+lib.size$caste <- gsub(pattern = "3", replacement = "small_worker", x = lib.size$caste)
+
+ggplot(lib.size, aes(sample, lib.size, fill=caste))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+```
+
+
+Normalised library sizes
+
+```{r}
+norm.lib.size <- dge$samples
+norm.lib.size$sample <- rownames(norm.lib.size) 
+norm.lib.size$norm.lib.size <- norm.lib.size$lib.size * norm.lib.size$norm.factors
+norm.lib.size <- norm.lib.size[order(norm.lib.size$norm.lib.size),]
+
+norm.lib.size$caste <- gsub(pattern = "1", replacement = "gyne", x = norm.lib.size$caste)
+norm.lib.size$caste <- gsub(pattern = "2", replacement = "large_worker", x = norm.lib.size$caste)
+norm.lib.size$caste <- gsub(pattern = "3", replacement = "small_worker", x = norm.lib.size$caste)
+
+ggplot(norm.lib.size, aes(sample, norm.lib.size, fill=caste))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+```
+
+####Number of expressed genes per sample
+
+Plot the number of genes expressed in each sample
+
+```{r}
+ex_gene_sample <- apply(counts_matrix, 2, function(x){ sum(x!=0) })
+ex_gene_sample <- as.data.frame(ex_gene_sample, stringsAsFactors = F)
+names(ex_gene_sample) <- "Num_expressed_genes"
+ex_gene_sample$sample <- rownames(ex_gene_sample)
+
+ex_gene_sample$caste <- data_info[ex_gene_sample$sample,]$caste
+
+ex_gene_sample$caste <- gsub(pattern = "1", replacement = "gyne", x = ex_gene_sample$caste)
+ex_gene_sample$caste <- gsub(pattern = "2", replacement = "large_worker", x = ex_gene_sample$caste)
+ex_gene_sample$caste <- gsub(pattern = "3", replacement = "small_worker", x = ex_gene_sample$caste)
+
+ggplot(ex_gene_sample, aes(sample, Num_expressed_genes, fill=caste ))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+```
+
+####Number of expressed genes in % samples
+
+For each gene calculate the % of samples in which it is expressed. 
+
+Calculate how many genes are expressed in each % interval of samples.
+
+```{r}
+
+genes_percent_samples <- as.data.frame(apply(counts_matrix, 1, function(x){ sum(x!=0)/dim(counts_matrix)[2]*100 }))
+names(genes_percent_samples) <- "Percent_samples"
+genes_percent_samples$gene <- counts$Geneid
+
+
+ggplot(genes_percent_samples, aes(Percent_samples) )+
+  geom_histogram(stat="bin", binwidth=5, aes(fill=..count..))+
+  scale_fill_viridis() +
+  theme_bw()
+
+```
+
+
+###Calculate cpm, Normalize and filter
+
+Different filtering either by 
+
+* counts>10 
+
+* cpm>1 in n=3
+
+* cpm>1 in n=(n caste)/2
+
+```{r}
+#A <- rowSums(dge$counts)
+#dge <- dge[A>10, , keep.lib.sizes=FALSE]
+
+#isexpr <- rowSums(cpm(dge) > 1) >=3
+#dge <- dge[isexpr,,keep.lib.sizes=FALSE]
+
+#dge <- calcNormFactors(dge)
+```
+
+
+Calculate log2 CPM
+```{r}
+cpmNorm <- cpm(dge, normalized.lib.sizes=TRUE, log=TRUE, prior.count=0.25) 
+plot.new()
+plotDensities(cpmNorm, group = norm.lib.size[colnames(cpmNorm),]$caste) 
+abline(v=0)
+```
+
+Filter:
+  
+if n caste <3 then cpm>1 in n=(n caste)
+
+if n caste >3 then cpm>1 in n=(n caste)/2
+
+```{r}
+cpm.dge <- dge
+cpm.dge$counts <- cpmNorm
+
+#create a normalization factor 
+#if #samples < 3 then norm.factor=1
+#if #samples > 3 then norm.factor=0.5
+
+norm.samples <- data.frame(caste=levels(as.factor(cpm.dge$samples$caste)), stringsAsFactors = F)
+norm.samples$norm <- ""
+isexpr <- unlist(lapply(levels(as.factor(cpm.dge$samples$caste)), function(x){
+  if(sum(cpm.dge$samples$caste==x)<3){
+    1
+  }
+  else{
+    0.5
+  }}))
+norm.samples$norm <- isexpr
+
+#the normalization factor is used in
+# if n caste <3 then cpm>1 in n=(n caste)
+# if n caste >3 then cpm>1 in n=(n caste)/2
+
+#which means that we * by the normalization factor 
+
+#cpm>1
+dge.filt1 <- dge[
+  rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="1",])] >1) >= (sum(cpm.dge$samples$caste=="1")*norm.samples$norm[norm.samples$caste=="1"])|
+    rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="2",])] >1) >= (sum(cpm.dge$samples$caste=="2")*norm.samples$norm[norm.samples$caste=="2"])|
+    rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="3",])] >1) >= (sum(cpm.dge$samples$caste=="3")*norm.samples$norm[norm.samples$caste=="3"])
+  ,,keep.lib.sizes=FALSE]
+
+cat(dim(dge.filt1)[1], "exons kept in",dim(dge.filt1)[2],"samples if the filter is set to cmp>1\n")
+
+#cmp>0
+dge.filt0 <- dge[
+  rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="1",])] >0) >= (sum(cpm.dge$samples$caste=="1")*norm.samples$norm[norm.samples$caste=="1"])|
+    rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="2",])] >0) >= (sum(cpm.dge$samples$caste=="2")*norm.samples$norm[norm.samples$caste=="2"])|
+    rowSums(cpm.dge$counts[,rownames(cpm.dge$samples[cpm.dge$samples$caste=="3",])] >0) >= (sum(cpm.dge$samples$caste=="3")*norm.samples$norm[norm.samples$caste=="3"])
+  ,,keep.lib.sizes=FALSE]
+
+cat(dim(dge.filt0)[1], "exons kept in",dim(dge.filt0)[2],"samples if the filter is set to cmp>0")
+
+```
+
+Recalculate lib size:
+  
+```{r}
+# dge.filt1 <- calcNormFactors(dge.filt1)
+dge.filt0 <- calcNormFactors(dge.filt0)
+```
+
+###Voom transformation
+Apply the voom transformation and fit a linear model
+```{r}
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"No normalization",cex=2,font=2 )
+v <- voom(dge.filt0, design, plot=TRUE)
+
+fit <- lmFit(v, design)
+
+v$targets$caste <- gsub(pattern = "1", replacement = "gyne", x = v$targets$caste)
+v$targets$caste <- gsub(pattern = "2", replacement = "large_worker", x = v$targets$caste)
+v$targets$caste <- gsub(pattern = "3", replacement = "small_worker", x = v$targets$caste)
+
+contrast.matrix.caste <- makeContrasts(gyne-large_worker, gyne-small_worker, large_worker-small_worker, levels=design)
+contrast.matrix.QW <- makeContrasts(gyne-(large_worker+small_worker)/2, levels=design)
+
+fit.caste <- contrasts.fit(fit, contrast.matrix.caste)
+fit.caste <- eBayes(fit.caste)
+
+fit.QW <- contrasts.fit(fit, contrast.matrix.QW)
+fit.QW <- eBayes(fit.QW)
+
+plot.new()
+text(0.5,0.5,"Cyclicloess normalization",cex=2,font=2 )
+v.loess <- voom(dge.filt0, design, normalize.method="cyclicloess", plot=TRUE)
+
+fit.loess <- lmFit(v.loess, design)
+
+v.loess$targets$caste <- gsub(pattern = "1", replacement = "gyne", x = v.loess$targets$caste)
+v.loess$targets$caste <- gsub(pattern = "2", replacement = "large_worker", x = v.loess$targets$caste)
+v.loess$targets$caste <- gsub(pattern = "3", replacement = "small_worker", x = v.loess$targets$caste)
+
+de.fit.QW.loess <- contrasts.fit(fit.loess, contrast.matrix.caste)
+de.fit.QW.loess <- eBayes(de.fit.QW.loess)
+
+fit.QW.loess <- contrasts.fit(fit.loess, contrast.matrix.QW)
+fit.QW.loess <- eBayes(fit.QW.loess)
+
+plot.new()
+text(0.5,0.5,"Quantile normalization",cex=2,font=2 )
+v.quant <- voom(dge.filt0, design, normalize.method="quantile", plot=TRUE)
+
+fit.quant <- lmFit(v.quant, design)
+
+v.quant$targets$caste <- gsub(pattern = "1", replacement = "gyne", x = v.quant$targets$caste)
+v.quant$targets$caste <- gsub(pattern = "2", replacement = "large_worker", x = v.quant$targets$caste)
+v.quant$targets$caste <- gsub(pattern = "3", replacement = "small_worker", x = v.quant$targets$caste)
+
+fit.caste.quant <- contrasts.fit(fit.quant, contrast.matrix.caste)
+fit.caste.quant <- eBayes(fit.caste.quant)
+
+fit.QW.quant <- contrasts.fit(fit.quant, contrast.matrix.QW)
+fit.QW.quant <- eBayes(fit.QW.quant)
+
+```
+
+Densities when using lmFit(v, design)
+```{r}
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"No normalization",cex=2,font=2 )
+plotDensities(v, group = v$targets$caste)
+
+plot.new()
+text(0.5,0.5,"Cyclicloess normalization",cex=2,font=2 )
+plotDensities(v.loess, group = v$targets$caste)
+
+plot.new()
+text(0.5,0.5,"Quantile normalization",cex=2,font=2 )
+plotDensities(v.quant, group = v$targets$caste)
+
+
+
+```
+
+Densities when using contrasts on caste
+
+contrasts.fit(fit, contrast.matrix.caste)
+```{r}
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by caste",cex=2,font=2 )
+plotDensities(fit.caste)
+
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by caste Cyclicloess norm.",cex=2,font=2 )
+plotDensities(de.fit.QW.loess)
+
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by caste quantile norm.",cex=2,font=2 )
+plotDensities(fit.caste.quant)
+```
+
+Densities when using contrasts on sex
+
+contrasts.fit(fit, contrast.QW)
+```{r}
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by sex",cex=2,font=2 )
+
+plotDensities(fit.QW)
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by sex Cyclicloess norm.",cex=2,font=2 )
+plotDensities(fit.QW.loess)
+
+par(mar=c(1,1,1,1))
+layout( matrix(c(1,2)), heights = c(1,3))
+
+plot.new()
+text(0.5,0.5,"Contrast by sex quantile norm.",cex=2,font=2 )
+plotDensities(fit.QW.quant)
+```
+
+```{r}
+as.data.frame(contrast.matrix.caste)
+```
+
+
+```{r}
+# par(mar=c(1,1,1,1))
+# layout( matrix(c(1,2), byrow = TRUE), heights = c(1,3))
+
+# plot.new()
+# text(0.5,0.5,"MDS Cyclicloess norm.",cex=2,font=2 )
+# plotMDS(v.loess,pch = v$targets$study, col=as.numeric(as.factor(v$targets$caste)))
+# plotMDS(v.loess,pch = as.numeric(v$targets$age), col=as.numeric(as.factor(v$targets$caste)))
+
+
+plot.new()
+#text(0.5,0.5,"MDS no norm.",cex=2,font=2 )
+plotMDS(v,pch =  16, col=as.numeric(as.factor(v$targets$caste)))
+legend("bottomleft", legend=c(levels(as.factor(v$targets$caste))), text.col =c(1,2,3), pch=c(16))
+
+# plot.new()
+# text(0.5,0.5,"MDS quantile norm.",cex=2,font=2 )
+# plotMDS(v.quant,pch = 16, col=as.numeric(as.factor(v$targets$caste)))
+```
+
+
+
+
+##Differential expression
+###Differential expression by caste
+
+```{r}
+#First define the number of differentially expressed exons to show
+numDiff.caste <- 200000
+#then use the function topSplice with the coeficient (comparision) that we're interested in
+de.caste <- topTable(de.fit.QW.loess, coef = 1, number=numDiff.caste,  p.value = 0.05)
+
+de.caste$qmstrg <- sub(".*(MSTRG\\.\\d*).*", "\\1", de.caste$GeneID)
+
+
+#Find the names of the genes is Apis mellifera 
+deMatches.caste<- de.caste %>% 
+  dplyr::select(qmstrg, logFC, adj.P.Val) %>%
+  merge(ameMatches, by="qmstrg")
+
+in_genes_ds <- deMatches.caste[grep(".*transformer.*", deMatches.caste$geneName, ignore.case = TRUE),]
+in_genes_ds <- rbind(in_genes_ds, deMatches.caste[grep(".*vitellogenin.*", deMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.caste[grep(".*bric.*", deMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.caste[grep(".*juvenile hormone.*", deMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.caste[grep(".*insulin.*", deMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.caste[grep(".*royal.*", deMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.caste[grep(".*forkhead.*O-like.*", deMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.caste[grep(".*yellow.*", deMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.caste[grep(".*doublesex.*", deMatches.caste$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.caste[grep(".*fruitless.*", deMatches.caste$geneName, ignore.case = TRUE),])
+dplyr::select(in_genes_ds, geneName, ID, logFC, adj.P.Val)
+
+
+```
+
+###Differential expression by QW
+
+```{r}
+#First define the number of differentially expressed exons to show
+numDiff.QW <- 200000
+#then use the function topSplice with the coeficient (comparision) that we're interested in
+de.QW <- topTable(de.fit.QW.loess, coef = 1, number=numDiff.QW,  p.value = 0.05)
+
+de.QW$qmstrg <- sub(".*(MSTRG\\.\\d*).*", "\\1", de.QW$GeneID)
+
+length(unique(de.QW$qmstrg))
+length(unique(deMatches.QW$qmstrg))
+
+#Find the names of the genes is Apis mellifera 
+deMatches.QW<- de.QW %>% 
+  dplyr::select(qmstrg, logFC, adj.P.Val) %>%
+  merge(ameMatches, by="qmstrg")
+
+in_genes_ds <- deMatches.QW[grep(".*transformer.*", deMatches.QW$geneName, ignore.case = TRUE),]
+in_genes_ds <- rbind(in_genes_ds, deMatches.QW[grep(".*vitellogenin.*", deMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.QW[grep(".*bric.*", deMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.QW[grep(".*juvenile hormone.*", deMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.QW[grep(".*insulin.*", deMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.QW[grep(".*royal.*", deMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.QW[grep(".*forkhead.*O-like.*", deMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.QW[grep(".*yellow.*", deMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.QW[grep(".*doublesex.*", deMatches.QW$geneName, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, deMatches.QW[grep(".*fruitless.*", deMatches.QW$geneName, ignore.case = TRUE),])
+
+dplyr::select(in_genes_ds, geneName, ID, logFC, adj.P.Val)
+
+# write.table(deMatches.QW,"/Users/afarre/Unimelb/Doublesex/Aechinatior/deCaste_aec.txt", col.names = TRUE)
+
+```
+
+##DE intersect Sex and Caste 
+
+```{r}
+de_sex_genes <- data.frame(gene=deMatches.QW$geneName, contrast=rep("sex", length(deMatches.QW$geneName)))
+de_caste_genes <- data.frame(gene=diffMatches.caste$geneName, contrast=rep("caste", length(diffMatches.caste$geneName)))
+de_matchedgenes <- rbind(de_caste_genes, de_sex_genes)
+de_matchedgenes <- unique(de_matchedgenes)
+
+grid.newpage()
+venn.plot <- draw.pairwise.venn(area1 = length(de_matchedgenes[de_matchedgenes$contrast=="sex",]$gene), 
+                   area2 = length(de_matchedgenes[de_matchedgenes$contrast=="caste",]$gene), 
+                   cross.area = length(intersect(de_matchedgenes[de_matchedgenes$contrast=="sex",]$gene, de_matchedgenes[de_matchedgenes$contrast=="caste",]$gene)), 
+                   category = c("DE sex", "DE caste"))
+length(unique(deMatches.QW$geneName))
+length(unique(deMatches.caste$geneName))
+
+dim(unique(rbind(deMatches.QW, deMatches.QW)))
+length(de_matchedgenes[de_matchedgenes$contrast=="sex",]$gene)
+length(de_matchedgenes[de_matchedgenes$contrast=="caste",]$gene)
+```
+
+
+Contingency table:
+
+Columns: DE - DS
+
+Rows: Sex - Caste
+
+```{r}
+cT <- matrix(c(dim(deMatches.QW)[1], dim(deMatches.caste)[1], dim(diffMatches.QW)[1], dim(diffMatches.caste)[1]), nrow = 2)
+cT
+```
+
+Test for enrichment: Fisher's exact test
+
+```{r}
+fisher.test(cT)
+
+```
+
+Are the genes the same? 
+
+```{r}
+deds <- list(de.caste=deMatches.caste$gene, ds.caste=diffMatches.caste$gene,de.QW=deMatches.QW$gene, ds.QW=diffMatches.QW$gene)
+venn(deds)
+upset(fromList(deds), order.by = "freq")
+```
+
+##Doublesex targets
+
+```{r}
+#load list of dsx targets
+dsxTargets <- read.table("/Users/afarre/Unimelb/Doublesex/R/orthoDB_dsxTargets_dme2ame.txt")
+
+#calculate number of DS genes by caste and by sex
+ds.dsx.caste <- unique(diffMatches.caste[diffMatches.caste$dbGeneID %in% dsxTargets$ensembl_id,]$dbGeneID)
+ds.dsx.QW <- unique(diffMatches.QW[diffMatches.QW$dbGeneID %in% dsxTargets$ensembl_id,]$dbGeneID)
+
+
+#differential gene expression by caste
+
+de.dsx.caste <- unique(deMatches.caste[deMatches.caste$dbGeneID %in% dsxTargets$ensembl_id,]$dbGeneID)
+
+
+#differential gene expression by sex
+de.dsx.QW <- unique(deMatches.QW[deMatches.QW$dbGeneID %in% dsxTargets$ensembl_id,]$dbGeneID)
+
+```
+
+Contingency table:
+
+Columns: DE - DS
+
+Rows: QW - Caste
+
+```{r}
+cT <- matrix(c(length(de.dsx.QW), length(de.dsx.caste), length(ds.dsx.QW),length(ds.dsx.caste)), nrow = 2)
+cT
+```
+
+Test for enrichment: Fisher's exact test
+
+```{r}
+fisher.test(cT)
+
+```
+
+Are the genes the same? 
+
+```{r}
+deds <- list(de.dsx.caste=de.dsx.caste, ds.dsx.caste=ds.dsx.caste,de.dsx.QW=de.dsx.QW, ds.dsx.QW=ds.dsx.QW)
+venn(deds)
+upset(fromList(deds), order.by = "freq")
+```
+
+
+
+Test for enrichment: Fisher's exact test
+
+```{r}
+fisher.test(cT)
+
+```
+
+Are the genes the same? 
+
+```{r}
+deds <- list(de.caste=de.dsx.caste, ds.caste=ds.dsx.caste,de.QW=de.dsx.QW, ds.QW=ds.dsx.QW)
+venn(deds)
+upset(fromList(deds), order.by = "freq")
+```
+
+
+##Genome Wide Differential expression vs Differential Splicing
+```{r}
+#First define the number of differentially expressed exons to show
+numDiff.caste <- 200000
+#then use the function topSplice with the coeficient (comparision) that we're interested in
+de.caste <- topTable(de.fit.QW.loess, coef = 1, number=numDiff.caste,  p.value = 0.05)
+de.QW <- topTable(fit.QW, coef=1, number=numDiff.caste,  p.value = 0.05)
+
+length(unique(de.fit.QW.loess$genes))
+
+deds <- list(ds.caste=diff.caste$GeneID, de.caste=de.caste$GeneID, ds.QW=diff.QW$GeneID, de.QW=de.QW$GeneID)
+
+venn(deds)
+
+GWcT <- matrix(c(length(unique(de.QW$GeneID)), length(unique(de.caste$GeneID)), length(unique(diff.QW$GeneID)),length(unique(diff.caste$GeneID))), nrow = 2)
+
+chisq.test(GWcT)
+```
+
+
+###Intersect Castes 
+
+```{r}
+#More detail can be obtained by topSplice
+# 
+# #First define the number of differentially expressed exons to show
+# numDiff.caste <- 200000
+# #then use the function topSplice with the coeficient (comparision) that we're interested in
+# diff.caste2 <- topSplice(ex.caste.loess, coef=2, test="simes", number=numDiff.caste,  FDR = 0.5)
+# diff.caste2$qmstrg <- sub(".*(MSTRG\\.\\d*).*", "\\1", diff.caste2$GeneID)
+# dplyr::select(diff.caste2, genes, GeneID, qmstrg)
+# 
+# #Find the names of the genes is Drosophila 
+# diffMatches.caste2 <- diff.caste2 %>%
+#   merge(ameMatches, by="qmstrg") 
+```
+
+```{r}
+#More detail can be obtained by topSplice
+
+# #First define the number of differentially expressed exons to show
+# numDiff.caste <- 200000
+# #then use the function topSplice with the coeficient (comparision) that we're interested in
+# diff.caste3 <- topSplice(ex.caste.loess, coef=3, test="simes", number=numDiff.caste,  FDR = 0.5)
+# diff.caste3$qmstrg <- sub(".*(MSTRG\\.\\d*).*", "\\1", diff.caste3$GeneID)
+# dplyr::select(diff.caste3, genes, GeneID, qmstrg)
+# 
+# #Find the names of the genes is Drosophila 
+# diffMatches.caste3 <- diff.caste3 %>%
+#   merge(ameMatches, by="qmstrg") 
+```
+
+```{r}
+
+
+# AS_genes_castes <- list(qw=diffMatches.caste$geneName, qm=diffMatches.caste2$geneName, wm=diffMatches.caste3$geneName)
+# upset(fromList(AS_genes_castes), order.by = "freq")
+# 
+# venn(AS_genes_castes)
+```
+###Doublesex targets
+
+```{r}
+#load list of dsx targets
+dsxTargets <- read.table("/Users/afarre/Unimelb/Doublesex/R/orthoDB_dsxTargets_dme2ame.txt")
+
+#calculate number of DS genes by caste and by sex
+ds.caste <- unique(diffMatches.caste[diffMatches.caste$dbGeneID %in% dsxTargets$ensembl_id,]$dbGeneID)
+ds.QW <- unique(diffMatches.QW[diffMatches.QW$dbGeneID %in% dsxTargets$ensembl_id,]$dbGeneID)
+
+
+#differential gene expression by caste
+deGenes <- topTable(de.fit.QW.loess, coef = 1, number = numDiff.caste, p.value = 0.05)
+
+deGenes$qmstrg <- sub(".*(MSTRG\\.\\d*).*", "\\1", deGenes$genes)
+
+#Find the names of the genes in Apis 
+deGenesMatches <- deGenes %>%
+  merge(ameMatches, by="qmstrg")%>%
+  unique()
+
+de.caste <- unique(deGenesMatches[deGenesMatches$dbGeneID %in% dsxTargets$ensembl_id,]$dbGeneID)
+
+length(unique(deGenesMatches[deGenesMatches[deGenesMatches$dbGeneID %in% dsxTargets$ensembl_id,]$dbGeneID %in% diffMatches.caste$dbGeneID,]$dbGeneID))
+
+#differential gene expression by sex
+deGenes.QW <- topTable(fit.QW.loess, coef = 1, number = numDiff.QW, p.value = 0.05)
+
+deGenes.QW$qmstrg <- sub(".*(MSTRG\\.\\d*).*", "\\1", deGenes.QW$genes)
+
+#Find the names of the genes is Drosophila 
+deGenesMatches.QW <- deGenes.QW %>%
+  merge(ameMatches, by="qmstrg")%>%
+  unique()
+
+de.QW <- unique(deGenesMatches.QW[deGenesMatches.QW$dbGeneID %in% dsxTargets$ensembl_id,]$dbGeneID)
+
+```
+
+Contingency table:
+
+Columns: DE - DS
+
+Rows: Sex - Caste
+
+```{r}
+cT <- matrix(c(length(de.QW), length(de.caste), length(ds.QW),length(ds.caste)), nrow = 2)
+cT
+```
+
+Test for enrichment: Fisher's exact test
+
+```{r}
+fisher.test(cT)
+
+```
+
+Are the genes the same? 
+
+```{r}
+deds <- list(de.caste=de.caste, ds.caste=ds.caste,de.QW=de.QW, ds.QW=ds.QW)
+venn(deds)
+upset(fromList(deds), order.by = "freq")
+```
+
+
+

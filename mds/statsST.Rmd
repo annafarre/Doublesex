@@ -1,0 +1,223 @@
+---
+title: "statsST"
+author: "Anna Orteu"
+date: "03/05/2018"
+output: 
+  html_document:
+    toc: true # show a table of contents
+    toc_float: true # make table of contents float at the side of the page
+    depth: 4  # upto 4 depths of headings (specified by #, ##, ### and ####)
+    number_sections: false  # set to true if you want to number sections at each table header
+    theme: flatly
+    code_folding: hide # Add some awesome buttons to show/hide the code
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Prepare workspace
+
+```{r}
+library(ggplot2)
+```
+
+#Read in the data
+
+Read in the csv with all the stats from SuperTranscripts (ST). The csv is made by concatenating all the `*_info.txt` files that ST outputs.
+```{r rows.print=5}
+table <- read.csv("/Users/afarre/Unimelb/Doublesex/statsSTame.csv", header = F, sep = "\t", stringsAsFactors = F)
+table
+```
+
+Re-format the table to make it usable.
+```{r}
+for(i in 0:(dim(table)[1]/16-1)){table[(1:16)+16*i,3] <- table[1+(16*i),1]}
+for(i in 0:(dim(table)[1]/16-1)){
+  table[(1:16)+16*i,3] <- table[1+(16*i),1]
+  table[(1:6)+16*i,4] <- "Genes_found"
+  table[(7:11)+16*i,4] <- "Read"
+  table[(12:16)+16*i,4] <- "SuperTranscriptome_size_in_bp"
+  }
+
+colnames(table) <- c("count", "mapped2", "species", "data_type")
+
+stats_table<- data.frame()
+for(i in 0:(dim(table)[1]/16-1)){
+  a <- rbind(table[(4:6)+16*i,],table[(9:11)+16*i,])
+  stats_table  <- rbind(a, stats_table)
+  stats_table <- rbind(stats_table ,table[(14:16)+16*i,])
+}
+
+stats_table
+```
+
+#Number of reads mapped to the SuperTransciptome
+
+```{r}
+b <- stats_table[stats_table$data_type=="Read",]
+b$count <- as.numeric(b$count)
+cat("On average after QC and mapping we retained", mean(b[b$mapped2=="Map to superTranscriptome",]$count), "reads.")
+```
+
+```{r}
+ggplot(b, aes(species, count, fill=mapped2))+
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
+  scale_fill_discrete(name = "Number of reads mapped")
+```
+
+#Percentage of reads mapped to the ST
+
+```{r}
+b[b$mapped2=="Map to superTranscriptome",]
+b[b$mapped2=="Total",]
+b$percent <- ""
+
+STpercent <- as.data.frame(t(sapply(unique(b$species), 
+         function(x){ c(x,b[b$species==x &
+                              b$mapped2=="Map to superTranscriptome",]$count/b[b$species==x & 
+                                                                          b$mapped2=="Total",]$count*100) })), stringsAsFactors = FALSE)
+names(STpercent) <- c("Species", "percent")
+STpercent$percent <- as.numeric(STpercent$percent)
+
+STpercent
+meanSTpercent <- mean(STpercent$percent)
+cat("On average,", meanSTpercent, "% of reads were mapped to each ST.")
+```
+
+```{r}
+ggplot(STpercent, aes(Species, percent, fill=Species))+
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ylab("% reads maped to the ST")
+```
+
+#Size of the ST
+
+```{r}
+STsize <- stats_table[stats_table$data_type=="SuperTranscriptome_size_in_bp"&
+                        stats_table$mapped2=="Annotation + Genome guided assembly + De novo assembly",]
+STsize
+cat("Total size of all ST:", sum(as.numeric(STsize$count)), "\n")
+cat("Mean size of the STs:", mean(as.numeric(STsize$count)))
+```
+
+#Number of genes pre-filtering
+
+```{r}
+statsST <- stats_table[stats_table$data_type=="Genes_found",]
+statsST_numGenes <- stats_table[stats_table$data_type=="Genes_found"&
+                        stats_table$mapped2=="Annotation + Genome guided assembly + De novo assembly",]
+statsST_numGenes
+```
+
+```{r}
+ggplot(statsST_numGenes, aes(species, count, fill=species))+
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ylab("Number of genes")
+```
+
+```{r}
+mean.statsST_numGenes <- mean(as.numeric(statsST_numGenes$count))
+cat("Average number of genes pre-filtering:", mean.statsST_numGenes, "\n")
+```
+
+#Number of exons 
+
+```{r}
+statsSTfilt_numGenes <- statsSTfilt[statsSTfilt$data_type=="Total number of exons",]
+ggplot(statsSTfilt_numGenes, aes(species, count, fill=species))+
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ylab("Number of exons")
+```
+
+
+#Number of genes post-filtering
+
+Number of exons that pass the filtering. 
+
+All samples are filtered acoording to: 
+
+* if n caste <3 then cpm>1 in n=(n caste)
+
+* if n caste >3 then cpm>1 in n=(n caste)/2
+
+```{r}
+statsSTfilt <- read.csv("/Users/afarre/Unimelb/Doublesex/data/stats_ST_postfiltering.txt", sep="\t")
+statsSTfilt
+```
+
+```{r}
+statsSTfilt_numGenes <- statsSTfilt[statsSTfilt$data_type=="Total number of genes",]
+ggplot(statsSTfilt_numGenes, aes(species, count, fill=species))+
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ylab("Number of genes")
+```
+
+```{r}
+  
+meanNumgenes <- mean(statsSTfilt_numGenes$count)
+cat("Average number of genes post-filtering:", meanNumgenes, "\n")
+
+statsSTfiltVemless <- statsSTfilt_numGenes[statsSTfilt_numGenes$species!="Vollenhovia emeryi",]
+meanNumgenesVemless <- mean(statsSTfiltVemless$count)
+cat("Average number of genes post-filtering excluding Vollenhovia emeryi:", meanNumgenesVemless)
+
+```
+
+
+
+#Differentially expressed genes by caste 
+
+```{r}
+asGenes <- read.csv("/Users/afarre/Unimelb/Doublesex/data/AS_genes.txt", sep="\t")
+asGenes_caste <- asGenes[asGenes$treatment=="caste",]
+asGenes_sex <- asGenes[asGenes$treatment=="sex",]
+
+ggplot(asGenes, aes(species, count, fill=species))+
+  geom_bar(stat = "identity")+
+  facet_wrap(~treatment)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Caste - sex
+
+```{r}
+asGenes_sexCaste <- asGenes[asGenes$species!="Acromyrmex echinatior"&asGenes$species!="Monomorium pharaonis",]
+
+ggplot(asGenes_sexCaste, aes(species, count, fill=treatment))+
+  geom_bar(stat = "identity", position = "dodge")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+asGenes_sexCaste
+asGenes_sexCaste_diff <- as.data.frame(t(sapply(unique(as.character(asGenes_sexCaste$species)), function(x){ c(x,asGenes_sexCaste[asGenes_sexCaste$species==x & asGenes_sexCaste$treatment=="caste",]$count - asGenes_sexCaste[asGenes_sexCaste$species==x & asGenes_sexCaste$treatment=="sex",]$count) })))
+
+names(asGenes_sexCaste_diff) <- c("species", "caste_sex")
+
+ggplot(asGenes_sexCaste_diff, aes(species, caste_sex))+
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+#Genes of the Sex differentiation casacade and *doublesex* targets
+
+```{r}
+aec_ASint <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Aec_AS_int_genes.txt", sep=" ", header = TRUE)
+ame_prepupa_ASint <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Ame_prepupa_AS_int_genes.txt", sep=" ", header = TRUE)
+ame_ol_ASint <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Ame_4days_AS_int_genes.txt", sep=" ", header = TRUE)
+wau_ASint <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Wau_AS_int_genes.txt", sep=" ", header = TRUE)
+mph_ASint <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Mph_AS_int_genes.txt", sep=" ", header = TRUE)
+vem_ASint <- read.csv("/Users/afarre/Unimelb/Doublesex/R/Vem_prepupa_AS_int_genes.txt", sep=" ", header = TRUE)
+
+aec_ASint$product
+
+```
