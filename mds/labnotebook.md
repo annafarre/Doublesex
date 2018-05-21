@@ -122,5 +122,11 @@ dissatisfaction
 [This paper](https://www.cell.com/action/showImagesData?pii=S1534-5807%2814%2900738-2) identified doublesex target genes. I downloaded the S1 table which contains the results of their occupancy testing. Filtered the genes to get only the ones belonging to Peaksum kmeans cluster number 5. These are the ones with highest occupancy and the ones that show tissue nonspecific expression. 
 
 
+####21/05/2018
 
+To have reads in the right format for necklace (requirement from Trinity). Use this line in `fastq-dump`
+
+```
+SRA_TOOLKIT/fastq-dump --defline-seq '@$sn[_$rn]/$ri' --split-files file.sra
+```
 
