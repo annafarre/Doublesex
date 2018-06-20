@@ -292,8 +292,8 @@ Include caste and population info into the DGE object.
 
 ```{r rows.print=10}
 dge$samples$caste <- ""
-dge$samples[as.data.frame(design)$queen==1,]$caste <- "1"
-dge$samples[as.data.frame(design)$worker==1,]$caste <- "2"
+dge$samples[rownames(dge$samples) %in% rownames(design[as.data.frame(design)$queen==1,]),]$caste <- "1"
+dge$samples[rownames(dge$samples) %in% rownames(design[as.data.frame(design)$worker==1,]),]$caste <- "2"
 
 dge$samples
 ```
@@ -666,7 +666,7 @@ dplyr::select(int_genes_ds, geneName, P.Value, FDR, NExons)
 
 length( intersect( unique(diff.caste$qmstrg), unique(ameMatches$qmstrg) ) ) /length(unique(sort(diff.caste$qmstrg)) )
 
-write.table(diffMatches.caste,"/Users/afarre/Unimelb/Doublesex/R/dsCaste_mph.txt", col.names = TRUE)
+# write.table(diffMatches.caste,"/Users/afarre/Unimelb/Doublesex/R/dsCaste_mph.txt", col.names = TRUE)
 
 
 ```

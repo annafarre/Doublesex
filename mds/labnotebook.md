@@ -130,3 +130,33 @@ To have reads in the right format for necklace (requirement from Trinity). Use t
 SRA_TOOLKIT/fastq-dump --defline-seq '@$sn[_$rn]/$ri' --split-files file.sra
 ```
 
+####27/05/2018
+
+Created a Se version of Necklace. Run fine with Bombus terrestris data. Check further. 
+
+Created a SE+PE version of Necklace. Run with Pogonomyrmex barbatus. Got the error: 
+
+```
+Error, cannot mix PE and SE reads by using --left, --right, and --single.  See Trinity FAQ for how to combine SE and PE data at /home/afarre/.local/necklace-necklace_v0.9/tools/trinityrnaseq-Trinity-v2.4.0/Trinity line 909.
+```
+
+###Last month, finishing all the analysis 
+####06/06/2018 
+Cleaning the server. 
+
+Before|After|Project directory
+:--|:--|:--
+400G|192G|/data/cephfs/punim0235 
+367G|135G|/data/cephfs/punim0262
+1.3T|1.3T|/data/cephfs/punim0279
+555G|309G|/data/cephfs/punim0304
+330G|265G|/data/cephfs/punim0349
+778G|5.2G|/data/cephfs/punim0352
+455G|224G|/data/cephfs/punim0356
+1.2T|1.2T|/data/cephfs/punim0357
+512M|512M|/data/cephfs/punim0459
+
+Running Lhumile, Sinvicta and Dquadriceps
+
+
+

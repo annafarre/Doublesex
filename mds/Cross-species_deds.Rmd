@@ -27,7 +27,8 @@ library(ggsignif)
 ```
 
 #Differential Splicing
-##Read the data
+##DS by caste
+###Read the data
 
 ```{r}
 ds_ame2day <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsCaste_2day_ame.txt")
@@ -60,12 +61,17 @@ ds_wau$species <- "Wasmannia auropunctata"
 ds_wau$speciesID <- "wau"
 ds_wau <- dplyr::select(ds_wau, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
 
+ds_bte <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsCaste_bte.txt")
+ds_bte$species <- "Bombus terrestris"
+ds_bte$speciesID <- "bte"
+ds_bte <- dplyr::select(ds_bte, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID)
 
 ds.genes <- rbind(ds_aec, ds_ame2day)
 ds.genes <- rbind(ds.genes, ds_ame4day)
 ds.genes <- rbind(ds.genes, ds_ameP)
 ds.genes <- rbind(ds.genes, ds_mph)
 ds.genes <- rbind(ds.genes, ds_wau)
+ds.genes <- rbind(ds.genes, ds_bte)
 
 ```
 
@@ -82,19 +88,33 @@ upset(fromList(dsList2), order.by = "freq", nsets = 6)
 Which genes are differentially spliced in all species? 
 
 ```{r rows.print=10}
-ds.genesTable <- ds.genes %>%
+ds.genesTable1 <- ds.genes %>%
   # dplyr::filter(speciesID!="ameP") %>%
   group_by(speciesID)%>%
   dplyr::select(geneName, speciesID, gene)%>%
   unique()%>%
   ungroup()
 
-ds.genesTable <- table(ds.genesTable$geneName)
+ds.genesTable <- table(ds.genesTable1$geneName)
 ds.genesTable <- as.data.frame(ds.genesTable)
 dplyr::filter(ds.genesTable, Freq>=5)
+
+ds.genes[ds.genes$geneName=="15-hydroxyprostaglandin dehydrogenase [NAD(+)]-like",]
+
+unique(ds.genesTable1$speciesID)
+ds.genesTable2 <- dplyr::filter(ds.genesTable1, speciesID!="ame2day", speciesID!="ame4day")
+ds.genesTable3 <- table(ds.genesTable2$gene)
+ds.genesTable3 <- as.data.frame(ds.genesTable3)
+ds.genesTable4 <- dplyr::filter(ds.genesTable3, Freq>=4) %>%
+  arrange(desc(Freq))
+
+ds.genesTable4 <- as.data.frame(base::table(ds.genesTable2[ds.genesTable2$gene %in% ds.genesTable4$Var1,]$geneName))
+ds.genesTable4 <- dplyr::filter(ds.genesTable4, Freq>=4) %>%
+  arrange(desc(Freq))
+
 ```
 
-##Genes of interest: sex differentiation cascade
+###Genes of interest: sex differentiation cascade
 
 ```{r}
 
@@ -108,6 +128,7 @@ in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*forkhead.*O-like.*", ds.
 in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*yellow.*", ds.genesTable$Var1, ignore.case = TRUE),])
 in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*doublesex.*", ds.genesTable$Var1, ignore.case = TRUE),])
 in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*fruitless.*", ds.genesTable$Var1, ignore.case = TRUE),])
+in_genes_ds <- rbind(in_genes_ds, ds.genesTable[grep(".*sex lethal.*", ds.genesTable$Var1, ignore.case = TRUE),])
 dplyr::select(in_genes_ds, Var1, Freq)%>%
   arrange(dplyr::desc(Freq))
 ds.genes[grep(".*doublesex.*", ds.genes$geneName, ignore.case = TRUE),]
@@ -132,9 +153,137 @@ in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*groucho.*", ds.genes$geneName
 in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*sister.*less.*", ds.genes$geneName, ignore.case = TRUE),])
 in_genes_ds <- rbind(in_genes_ds, ds.genes[grep(".*G0282133.*", ds.genes$gene, ignore.case = TRUE),])
 
-dplyr::select(in_genes_ds, geneName, species, speciesID)
+dplyr::select(in_genes_ds, geneName, species, speciesID, P.Value)%>%
+  filter(geneName=="sex-lethal homolog")
 
 ```
+
+
+<!-- ##DS by sex -->
+<!-- ###Read the data -->
+
+<!-- ```{r} -->
+<!-- dsSex_ame2day <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsSex_2day_ame.txt") -->
+<!-- dsSex_ame2day$species <- "Apis mellifera" -->
+<!-- dsSex_ame2day$speciesID <- "ame2day" -->
+<!-- dsSex_ame2day <- dplyr::select(dsSex_ame2day, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID) -->
+
+<!-- dsSex_ame4day <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsSex_4day_ame.txt") -->
+<!-- dsSex_ame4day$species <- "Apis mellifera" -->
+<!-- dsSex_ame4day$speciesID <- "ame4day" -->
+<!-- dsSex_ame4day <- dplyr::select(dsSex_ame4day, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID) -->
+
+<!-- dsSex_ameP <-read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsSex_") -->
+<!-- dsSex_ameP$species <- "Apis mellifera" -->
+<!-- dsSex_ameP$speciesID <- "ameP" -->
+<!-- dsSex_ameP <- dplyr::select(dsSex_ameP, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID) -->
+
+<!-- dsSex_wau <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsSex_wau.txt") -->
+<!-- dsSex_wau$species <- "Wasmannia auropunctata" -->
+<!-- dsSex_wau$speciesID <- "wau" -->
+<!-- dsSex_wau <- dplyr::select(dsSex_wau, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID) -->
+
+<!-- dsSex_bte <- read.table(file = "/Users/afarre/Unimelb/Doublesex/R/dsCaste_bte.txt") -->
+<!-- dsSex_bte$species <- "Bombus terrestris" -->
+<!-- dsSex_bte$speciesID <- "wau" -->
+<!-- dsSex_wau <- dplyr::select(dsSex_wau, ID, FDR, P.Value,gene,type,dbGeneIDlist, species, speciesID, geneName, dbGeneID) -->
+
+<!-- dsSex.genes <- rbind(dsSex_aec, dsSex_ame2day) -->
+<!-- dsSex.genes <- rbind(dsSex.genes, dsSex_ame4day) -->
+<!-- dsSex.genes <- rbind(dsSex.genes, dsSex_ameP) -->
+<!-- dsSex.genes <- rbind(dsSex.genes, dsSex_mph) -->
+<!-- dsSex.genes <- rbind(dsSex.genes, dsSex_wau) -->
+<!-- dsSex.genes <- rbind(dsSex.genes, dsSex_bte) -->
+
+<!-- dsSex_ame4day[grep(".*sex.*lethal.*",dsSex_ame4day$geneName),] -->
+<!-- dsSex_ame2day[grep(".*sex.*lethal.*",dsSex_ame2day$geneName),] -->
+<!-- ds_ame2day[grep(".*sex.*lethal.*",ds_ame2day$geneName),] -->
+<!-- ds_ame4day[grep(".*sex.*lethal.*",ds_ame4day$geneName),] -->
+
+<!-- ``` -->
+
+
+<!-- Intersection of Differentially spliced genes: -->
+<!-- ```{r} -->
+<!-- dsSexList1 <- list(aec=dsSex_aec$dbGeneID, ame2day=dsSex_ame2day$dbGeneID, ame4day=dsSex_ame4day$dbGeneID, mph=dsSex_mph$dbGeneID, wau=dsSex_wau$dbGeneID) -->
+<!-- dsSexList2 <- list(aec=dsSex_aec$geneName, ame2day=dsSex_ame2day$geneName, ame4day=dsSex_ame4day$geneName, mph=dsSex_mph$geneName, wau=dsSex_wau$geneName) -->
+<!-- upset(fromList(dsSexList1), order.by = "freq", nsets = 6) -->
+<!-- upset(fromList(dsSexList2), order.by = "freq", nsets = 6) -->
+
+<!-- ``` -->
+
+<!-- Which genes are differentially spliced in all species? -->
+
+<!-- ```{r rows.print=10} -->
+<!-- dsSex.genesTable1 <- dsSex.genes %>% -->
+<!--   # dplyr::filter(speciesID!="ameP") %>% -->
+<!--   group_by(speciesID)%>% -->
+<!--   dplyr::select(geneName, speciesID, gene)%>% -->
+<!--   unique()%>% -->
+<!--   ungroup() -->
+
+<!-- dsSex.genesTable <- table(dsSex.genesTable1$geneName) -->
+<!-- dsSex.genesTable <- as.data.frame(dsSex.genesTable) -->
+<!-- dplyr::filter(dsSex.genesTable, Freq>=5) -->
+
+<!-- dsSex.genes[dsSex.genes$geneName=="15-hydroxyprostaglandin dehydrogenase [NAD(+)]-like",] -->
+
+<!-- unique(dsSex.genesTable1$speciesID) -->
+<!-- dsSex.genesTable2 <- dplyr::filter(dsSex.genesTable1, speciesID!="ame2day", speciesID!="ame4day") -->
+<!-- dsSex.genesTable3 <- table(dsSex.genesTable2$gene) -->
+<!-- dsSex.genesTable3 <- as.data.frame(dsSex.genesTable3) -->
+<!-- dsSex.genesTable4 <- dplyr::filter(dsSex.genesTable3, Freq>=4) %>% -->
+<!--   arrange(desc(Freq)) -->
+
+<!-- dsSex.genesTable4 <- as.data.frame(base::table(dsSex.genesTable2[dsSex.genesTable2$gene %in% dsSex.genesTable4$Var1,]$geneName)) -->
+<!-- dsSex.genesTable4 <- dplyr::filter(dsSex.genesTable4, Freq>=4) %>% -->
+<!--   arrange(desc(Freq)) -->
+
+<!-- ``` -->
+
+<!-- ###Genes of interest: sex differentiation cascade -->
+
+<!-- ```{r} -->
+
+<!-- in_genes_dsSex <- dsSex.genesTable[grep(".*transformer.*", dsSex.genesTable$Var1, ignore.case = TRUE),] -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genesTable[grep(".*vitellogenin.*", dsSex.genesTable$Var1, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genesTable[grep(".*bric.*", dsSex.genesTable$Var1, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genesTable[grep(".*juvenile hormone.*", dsSex.genesTable$Var1, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genesTable[grep(".*insulin.*", dsSex.genesTable$Var1, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genesTable[grep(".*royal.*", dsSex.genesTable$Var1, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genesTable[grep(".*forkhead.*O-like.*", dsSex.genesTable$Var1, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genesTable[grep(".*yellow.*", dsSex.genesTable$Var1, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genesTable[grep(".*doublesex.*", dsSex.genesTable$Var1, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genesTable[grep(".*fruitless.*", dsSex.genesTable$Var1, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genesTable[grep(".*sex lethal.*", dsSex.genesTable$Var1, ignore.case = TRUE),]) -->
+<!-- dplyr::select(in_genes_dsSex, Var1, Freq)%>% -->
+<!--   arrange(dplyr::desc(Freq)) -->
+<!-- dsSex.genes[grep(".*doublesex.*", dsSex.genes$geneName, ignore.case = TRUE),] -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+
+<!-- in_genes_dsSex <- dsSex.genes[grep(".*transformer.*", dsSex.genes$geneName, ignore.case = TRUE),] -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*vitellogenin.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*bric.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*juvenile hormone.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*insulin.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*royal.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*forkhead.*O-like.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*yellow.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*doublesex.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*fruitless.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*sex.*lethal.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*complementary.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*daughter.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*groucho.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*sister.*less.*", dsSex.genes$geneName, ignore.case = TRUE),]) -->
+<!-- in_genes_dsSex <- rbind(in_genes_dsSex, dsSex.genes[grep(".*G0282133.*", dsSex.genes$gene, ignore.case = TRUE),]) -->
+
+<!-- dplyr::select(in_genes_dsSex, geneName, species, speciesID, P.Value)%>% -->
+<!--   filter(geneName=="sex-lethal homolog") -->
+
+<!-- ``` -->
 
 
 #Differential Expression
@@ -238,6 +387,8 @@ in_genes_de <- rbind(in_genes_de, de.genes[grep(".*yellow.*", de.genes$geneName,
 in_genes_de <- rbind(in_genes_de, de.genes[grep(".*doublesex.*", de.genes$geneName, ignore.case = TRUE),])
 in_genes_de <- rbind(in_genes_de, de.genes[grep(".*fruitless.*", de.genes$geneName, ignore.case = TRUE),])
 
+de.genes[grep(".*epidermal growth factor receptor.*", de.genes$geneName, ignore.case = TRUE),]
+
 in_genes_de$group <- ""
 
 in_genes_de[grep(".*transformer.*", in_genes_de$geneName, ignore.case = TRUE),]$group <- "transformer"
@@ -252,12 +403,13 @@ in_genes_de[grep(".*transformer.*", in_genes_de$geneName, ignore.case = TRUE),]$
 
 
 dplyr::select(in_genes_de, gene,geneName, species, speciesID, logFC, ID, group) %>%
-  dplyr::filter(geneName=="vitellogenin") %>%
+  # dplyr::filter(geneName=="vitellogenin") %>%
+  dplyr::filter(group=="yellow") %>%
   ggplot(aes(speciesID, logFC, fill=gene))+
   geom_dotplot(binaxis = "y", stackdir = "center", binwidth = 0.8)+
-  # facet_wrap(~group)+
+  facet_wrap(~geneName)+
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 13))+
-  scale_fill_discrete(name="Gene", labels=c("Vitellogenin", "Vitellogenin receptor"))+
+  # scale_fill_discrete(name="Gene", labels=c("Vitellogenin", "Vitellogenin receptor"))+
   theme(legend.text = element_text(size=14), legend.title = element_text(size=14))+
   theme(axis.title = element_text(size = 14))
 

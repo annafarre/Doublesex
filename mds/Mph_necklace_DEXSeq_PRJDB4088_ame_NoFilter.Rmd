@@ -1,0 +1,231 @@
+---
+title: "Mph_necklace_DEXSeq"
+author: "Anna Orteu"
+date: "12/06/2018"
+output: 
+  html_document:
+    toc: true # show a table of contents
+    toc_float: true # make table of contents float at the side of the page
+    depth: 4  # upto 4 depths of headings (specified by #, ##, ### and ####)
+    number_sections: false  # set to true if you want to number sections at each table header
+    theme: flatly
+    code_folding: hide # Add some awesome buttons to show/hide the code
+    df_print: paged
+---
+
+Script to analyse necklace output using DEXSeq. 
+Made for non-model insects - find orthology to _Apis mellifera_ genome. 
+
+Input requited: 
+
+* relST_genomeST.psl file from necklace
+
+* _Apis mellifera_ gtf file GCF_000002195.4_Amel_4.5_genomic.gff
+
+* block.counts file from necklace
+
+* X_SraRunTable.txt file with information about the samples 
+
+#Prepare workspace 
+
+Load libraries
+```{r message= FALSE, warning=FALSE}
+#install.packages("ggplot2")
+#install.packages("dplyr")
+#install.packages("tidyr")
+#devtools::install_github("sjmgarnier/viridis")
+#install.packages("VennDiagram")
+#install.packages("rtracklayer")
+
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("limma")
+#biocLite("edgeR")
+#biocLite("DEXSeq")
+#biocLite("GenomicRanges")
+#biocLite("Rsubread")
+
+
+
+library(limma)
+library(edgeR)
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(tidyr)
+library(DEXSeq)
+library(GenomicRanges)
+library(rtracklayer)
+library(Rsubread)
+library(viridis) #colour blind friendly palette for plots
+library(VennDiagram)
+library(rtracklayer)
+library(dplyr)
+library(data.table)
+library(gplots)
+library(UpSetR)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Differential Splicing: Analysis of necklace output of _Monomorium pharaonis_ 
+##Pre-processing
+###Read in the data info
+
+DexSeq requires a table with information about the samples as well as the raw counts for each exon in each sample
+And grouping information for which exons belong to which genes
+
+Read in the table with all the information of the SRA samples
+
+```{r rows.print=5}
+sample_id<-read.table("/Users/afarre/Unimelb/Doublesex/Mpharaonis/data_info/Mph_pe_SRR_Acc_List.txt", col.names = "sampleID", stringsAsFactors = F )
+sample_id 
+
+info_samples<-read.table("/Users/afarre/Unimelb/Doublesex/Mpharaonis/data_info/Mph_pe_SraRunTable.txt", sep = "\t", header = T,  stringsAsFactors = F )
+
+info_samples <- info_samples[info_samples$BioProject_s=="PRJDB4088",]
+info_samples
+```
+
+Create the data_info table for DEXseq
+
+```{r rows.print=10}
+#Get the sample names per caste 
+Queens <- info_samples[grep(".*Q\\d$", info_samples$sample_name_s, perl = T),]$Run_s
+Workers <- c(info_samples[grep(".*W\\d$", info_samples$sample_name_s, perl = T),]$Run_s, info_samples[grep("^PHARAO\\..*COL\\d$", info_samples$sample_name_s, perl = T),]$Run_s)
+
+DRP002877 <- info_samples[grep(".*[Q|W]\\d$", info_samples$sample_name_s, perl = T),]$Run_s
+
+#add a population and caste column
+info_samples$casteName <- ""
+info_samples$caste <- ""
+
+info_samples[info_samples$Run_s %in% Queens,]$casteName <- "Queen"
+info_samples[info_samples$Run_s %in% Workers,]$casteName <- "Worker"
+
+info_samples[info_samples$Run_s %in% Queens,]$caste <- "1"
+info_samples[info_samples$Run_s %in% Workers,]$caste <- "2"
+
+
+data_info <- dplyr::select(info_samples, Run_s, casteName)
+row.names(data_info) <- data_info$Run_s
+data_info$casteName <- as.factor(data_info$casteName)
+colnames(data_info) <- c("sample", "condition")
+
+```
+
+
+###Read in the count data
+Read in the data (count matrix)
+```{r  rows.print=5}
+#First get counts table
+counts <- read.table("/Users/afarre/Unimelb/Doublesex/Mpharaonis/necklace_ame2/block.counts",sep="\t",header=TRUE,stringsAsFactors=F)
+names(counts) <- gsub(".*(DRR.*)\\.bam","\\1", names(counts))
+
+#select only the samples that we want to use
+#in this case it's only the PE samples
+counts <- dplyr::select(counts, Geneid, Chr, Start, End, Strand, Length, data_info$sample)
+counts$Geneid <- gsub(":","_",counts$Geneid)
+
+```
+
+Create the exon_ids column with a unique identifier for each exon
+
+```{r rows.print=5}
+#each exon needs a unique name
+#create a column with unique exon ids 
+#exonid = geneid + exon number
+counts <- do.call(rbind, lapply(unique(counts$Geneid), function(x){ 
+  mutate(dplyr::filter(counts,Geneid==x), exon_ids=
+           paste(dplyr::filter(counts,Geneid==x)$Geneid, 
+                 rownames(dplyr::filter(counts,Geneid==x)), sep = "."))
+} ))
+
+row.names(counts) <- counts$exon_ids
+```
+
+Convert the counts data frame into a matrix (i.e exclude first 6 columns: gene, chr, etc.)
+
+```{r}
+#create the matrix with only the counts
+count_matrix <- data.matrix(dplyr::select(counts, -Geneid, -Chr, -Start, -End, -Strand, -Length, -exon_ids))
+count_matrix <- round(count_matrix)
+# gene_ids <- counts$Geneid
+# exon_ids <- counts$exon_ids
+```
+
+##DEXSeq
+
+Small testing dataset
+```{r}
+
+# Small dataset to test DEXSeq models
+# nshort <- 1000
+# dgeQW <- head(count_matrix[,data_info$sample], nshort)
+# 
+# gene_ids <- head(counts$Geneid, nshort)
+# exon_ids <- head(counts$exon_ids, nshort)
+```
+
+Full dataset
+```{r}
+#Full dataset
+dgeQW <- count_matrix[,data_info$sample]
+
+gene_ids <- counts$Geneid
+exon_ids <- counts$exon_ids
+
+
+#The model
+formulaFullModel = ~ sample + exon +  condition:exon
+formulaReducedModel = ~ sample + exon 
+
+#Create the dexseq object
+dxd <- DEXSeqDataSet(dgeQW,design=formulaFullModel,featureID=as.factor(exon_ids),
+                     groupID=as.factor(gene_ids),sampleData=data_info)
+
+## Could use the DEXSeqDataSetFromFeatureCounts function, but never got it to work...
+# flattenedFile <- import.gff("/Users/afarre/Unimelb/Doublesex/Mpharaonis/necklace_ame/SuperDuper.gff")
+# source("/Users/afarre/Unimelb/Doublesex/R/load_SubreadOutput.R")
+# dxd2 <- DEXSeqDataSetFromFeatureCounts(countfile = "/Users/afarre/Unimelb/Doublesex/Mpharaonis/necklace_ame/block_counts.out" ,design=~sample + exon + condition:exon, sampleData=data_info, flattenedfile="/Users/afarre/Unimelb/Doublesex/Mpharaonis/necklace_ame/SuperDuper.gff")
+
+
+#Can do some pre-filtering that will speed up the process and reduce the number of tests 
+#hard filtering is automatically aplied by DEXSeq
+keep <- rowSums(counts(dxd)) >= 10
+dxd <- dxd[keep,]
+
+#Estimate size factors and dispersions (DEXseq does this based on a negative bionmial distribution
+dxd <- estimateSizeFactors(dxd)
+dxd = estimateDispersions( dxd, formula = formulaFullModel)
+
+#plot dispersions
+#A good result has a curve, decreasing fitted (red) line
+pdf("/Users/afarre/Unimelb/Doublesex/R/DEXSeq/Mph_dispersionEstimates.pdf")
+plotDispEsts(dxd)
+dev.off()
+
+
+#Test for DEU
+dxd = testForDEU( dxd,reducedModel = formulaReducedModel,fullModel = formulaFullModel )
+
+#Extract the results
+res <- DEXSeqResults(dxd)
+
+#Get p-value per gene based on the p-values for all exons in the gene/cluster
+pgq <- perGeneQValue(res, p = "pvalue" ) 
+pgq
+
+## Save results to a text file and R object
+tmp <- cbind(gene = names(pgq), "adjP" = pgq)
+```
+
+Save the Rdata and tables 
+
+```{r}
+save(dxd, res, pgq, file = "/Users/afarre/Unimelb/Doublesex/R/DEXSeq/Mph_DEXseq_NoFilter.Rdata")
+write.table(tmp, file = "/Users/afarre/Unimelb/Doublesex/R/DEXSeq/Mph_DEXseq_byGene_NoFilter.txt", col.names = TRUE, row.names = FALSE, quote = FALSE, sep = "\t")
+write.table(DEXSeqResults(dxd), file="/Users/afarre/Unimelb/Doublesex/R/DEXSeq/Mph_DEXseq_byExon_NoFilter.txt", col.names = TRUE, row.names = FALSE, quote = FALSE, sep = "\t" )
+```
+

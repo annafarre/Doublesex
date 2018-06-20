@@ -47,6 +47,22 @@ ggplot(table, aes(SpeciesID, Genes, fill=Subset))+
 ```
 
 ```{r}
+table %>%
+  filter(SpeciesID %in% c("Ame 2-days", "Ame 4-days", "Ame Prepupae" ), Subset=="Total") %>%
+  ggplot(aes(SpeciesID, Genes, fill=Subset))+
+  geom_bar(stat = "identity", fill = "deepskyblue4")+
+  facet_grid(Analysis ~ Contrast)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 13), axis.text.y = element_text(size = 13))+
+  ylab("Number of genes")+
+  xlab("Species")+
+  scale_y_continuous(limits = c(0, 10000))+ 
+  theme(strip.text.x = element_text(size = 13), strip.text.y = element_text(size = 13))
+  
+
+```
+
+
+```{r}
 table2$genes
 
 ggplot(table2, aes(speciesID, genes, fill=subset))+

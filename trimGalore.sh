@@ -116,8 +116,8 @@ cat <<-EOF > ${pathScript}
 
 #run TrimGalore on raw data 
 
-#SBATCH -p physical
-#SBATCH --time=03:00:00
+#SBATCH -p physical-cx4
+#SBATCH --time=20:00:00
 #SBATCH --job-name=trimGalore_${filename}
 #SBATCH --mem=25GB
 #SBATCH --mail-type=ALL

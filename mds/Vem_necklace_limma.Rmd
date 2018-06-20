@@ -178,7 +178,7 @@ head(matchList)
 
 
 
-#Analysis of necklace output of _Wasmannia auropunctata_ 
+#Analysis of necklace output of _Vollenhovia emeryi_ 
 ##Pre-processing
 ###Read in the count data
 Read in the data (count matrix)

@@ -1,0 +1,1 @@
+for i in `ls DRR*.bam`; do  samtools view -h $i gene13749:MSTRG.15287 >> dsx_$i ; done

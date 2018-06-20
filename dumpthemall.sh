@@ -42,10 +42,10 @@ while getopts ":p:r:h" optname
         ;;
       "r")
         if [ $OPTARG == "p" ] ; then
-        	options="--defline-seq '@$sn[_$rn]/$ri' --split-3 --readids --skip-technical --clip --read-filter pass --dumpbase --gzip"       
+        	options="--split-3 --readids --skip-technical --clip --read-filter pass --dumpbase --gzip"       
        		echo $options
         elif [ $OPTARG == "s" ] ; then
-        	options="--defline-seq '@$sn[_$rn]/$ri' --readids --skip-technical --clip --read-filter pass --dumpbase  --gzip"          
+        	options="--readids --skip-technical --clip --read-filter pass --dumpbase  --gzip"          
         	echo $options
         else 
         	echo "Invalid argument. Specify p (paired) or s (single) end library"        
@@ -88,8 +88,8 @@ do
 	pathScript=${path}${line}_fastq-dump.sh
 	cat <<-EOF > ${pathScript}
 	#!/bin/bash 
- 	#SBATCH -p physical 
- 	#SBATCH --time=03:00:00 
+	#SBATCH -p physical-cx4 
+	#SBATCH --time=03:00:00 
 	#SBATCH --nodes=1 
 	#SBATCH --ntasks=1 
 	#SBATCH --cpus-per-task=1 

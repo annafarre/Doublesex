@@ -17,7 +17,7 @@ do
 cat <<-EOF > ${filename}_readRename.sh
 #!/bin/bash
 
-#SBATCH -p physical
+#SBATCH -p physical-cx4
 #SBATCH --time=01:00:00
 #SBATCH --job-name=readconvert
 #SBATCH --mem=10GB
@@ -28,6 +28,6 @@ cat <<-EOF > ${filename}_readRename.sh
 
 mkdir -p necklaceInput/
 
-gunzip -c ${filename} | sed 's/\(^@.\)*\.\(.*\)\.\([1-2]\)/\1_\2\/\3/g' | gzip > necklaceInput/${filename}
+gunzip -c ${filename} | sed 's/\(^[@+].\)*\.\(.*\)\.\([1-2]\)/\1_\2\/\3/g' | gzip > necklaceInput/${filename}
 EOF
 done
